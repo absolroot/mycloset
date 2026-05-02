@@ -4,11 +4,14 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
+const projectRoot = process.cwd()
+
 export default defineConfig({
+  root: projectRoot,
   plugins: [react(), tailwindcss(), copyRuntimeFiles()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(projectRoot, "src"),
     },
   },
 })
@@ -24,9 +27,9 @@ function copyRuntimeFiles() {
   return {
     name: "copy-runtime-files",
     closeBundle() {
-      const outDir = path.resolve(__dirname, "dist")
+      const outDir = path.resolve(projectRoot, "dist")
       for (const file of files) {
-        const source = path.resolve(__dirname, file)
+        const source = path.resolve(projectRoot, file)
         if (!fs.existsSync(source)) continue
         fs.copyFileSync(source, path.join(outDir, file))
       }
