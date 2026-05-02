@@ -1,0 +1,17 @@
+{
+  "name": "Closet",
+  "short_name": "Closet",
+  "description": "PC와 모바일에서 쓰는 개인 옷장 관리 앱",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "./assets/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
