@@ -51,9 +51,10 @@ if (!isWindows || !hasNonAsciiPath) {
   process.exit(0)
 }
 
-const buildRoot = path.join(os.tmpdir(), "closet-build")
+const repoHash = crypto.createHash("sha256").update(repoRoot).digest("hex").slice(0, 10)
+const buildRoot = path.join(os.tmpdir(), `closet-build-${repoHash}-${process.pid}-${Date.now()}`)
 const excludedDirs = [".git", "node_modules", "dist", ".playwright-mcp", "assets\\temp"]
-const excludedFiles = ["config.js", "*.log", "*.out", "*.err"]
+const excludedFiles = ["*.log", "*.out", "*.err"]
 
 runRobocopy([
   repoRoot,
@@ -93,3 +94,13 @@ runRobocopy([
   "/NJS",
   "/NP",
 ])
+
+try {
+  const resolvedBuildRoot = path.resolve(buildRoot)
+  const resolvedTempRoot = path.resolve(os.tmpdir())
+  if (resolvedBuildRoot.startsWith(resolvedTempRoot) && path.basename(resolvedBuildRoot).startsWith("closet-build-")) {
+    fs.rmSync(resolvedBuildRoot, { recursive: true, force: true })
+  }
+} catch (error) {
+  console.warn(`Temporary build directory could not be removed: ${buildRoot}`)
+}

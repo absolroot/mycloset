@@ -3,6 +3,8 @@
 const DEFAULT_CSV_FILE = "Closet 137abb41507c80699008e26e88fa26d9_all (2).csv";
 const DB_NAME = "closet-pwa";
 const DB_VERSION = 1;
+const FULL_PULL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const SIGNED_IMAGE_URL_MAX_AGE_MS = 45 * 60 * 1000;
 const MEASURE_FIELDS = [
   "총장",
   "어깨",
@@ -74,36 +76,44 @@ const CATEGORY_ICONS = {
   악세사리: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>`,
 };
 
-const COLOR_MAP = {
-  블랙: "#202124",
-  화이트: "#ffffff",
-  브라운: "#795548",
-  베이지: "#d8c4a3",
-  네이비: "#243b64",
-  블루: "#1a73e8",
-  "그레이/실버": "#c4c7c5",
-  그린: "#188038",
-  카키: "#7d8460",
-  레드: "#c5221f",
-  와인: "#7b1f32",
-  핑크: "#f4a6b8",
-  옐로우: "#fbbc04",
-  오렌지: "#f29900",
-  골드: "#c6a15b"
-};
-
-const DEFAULT_COLOR_OPTIONS = Object.keys(COLOR_MAP);
+const HIDDEN_FILTER_COLOR_OPTIONS = new Set(["블루", "와인"]);
+const DEFAULT_COLOR_OPTIONS = window.closetFormatUtils.DEFAULT_COLOR_OPTIONS;
+const {
+  cleanText,
+  normalizeColor,
+  normalizeItemColor,
+  clampNumber,
+  cleanNotionLabel,
+  parsePrice,
+  parseNumber,
+  parseKoreanDate,
+  compareDate,
+  sortByUpdated,
+  uniqueValues,
+  sortColorOptions,
+  groupBy,
+  colorToHex,
+  formatWon,
+  formatNumber,
+  hashString,
+  escapeHtml,
+  escapeAttr
+} = window.closetFormatUtils;
+const filterSubscribers = new Set();
 
 const state = {
   db: null,
   items: [],
   colorOptions: [],
+  loading: true,
   filters: {
     query: "",
-    category: "all",
-    brand: "all",
-    color: "all",
-    owned: "all",
+    parentCategory: "all",
+    childCategory: "all",
+    brands: [],
+    colors: [],
+    owned: [],
+    priceRanges: [],
     sort: "updated"
   },
   selectedId: null,
@@ -113,6 +123,8 @@ const state = {
   session: null,
   supabaseReady: false,
   syncing: false,
+  categoryCache: new Map(),
+  colorCache: new Map(),
   pendingItemIds: new Set(),
   pendingDeleteIds: new Set(),
   pendingImageDeletes: new Map(),
@@ -141,31 +153,67 @@ async function init() {
   const shared = await maybeRenderSharedView();
   if (shared) return;
 
+  await restorePendingSync();
   await initSupabase();
 
   if (shouldRequireAuth()) {
     state.items = [];
     state.selectedId = null;
+    state.loading = false;
     render();
     showAuthDialog({ once: true });
     return;
   }
 
-  await loadLocalItems();
-
-  if (state.session) {
-    await pullFromSupabase({ silent: true });
-  }
-
-  if (!state.items.length) {
-    await importDefaultCsv();
-  }
-
-  if (state.session && state.items.length) {
-    await syncNow({ silent: true });
+  try {
+    const pullOptions = await prepareSessionDataLoad();
+    await pullFromSupabase({ silent: true, ...pullOptions });
+  } catch (error) {
+    console.error(error);
+    showToast("Supabase 데이터를 불러오지 못했습니다.");
+  } finally {
+    state.loading = false;
   }
 
   render();
+}
+
+async function prepareSessionDataLoad() {
+  if (!state.session) return {};
+
+  const userId = state.session.user.id;
+  const cachedUserId = await dbMetaValue("supabaseUserId");
+  const lastRemotePullAt = await dbMetaValue("lastRemotePullAt");
+  const lastFullRemotePullAt = await dbMetaValue("lastFullRemotePullAt");
+  const lastSignedImageUrlRefreshAt = await dbMetaValue("lastSignedImageUrlRefreshAt");
+  const sameUser = cachedUserId === userId;
+
+  if (!sameUser) {
+    await dbSetMetaValue("supabaseUserId", userId);
+    return {};
+  }
+
+  if (hasPendingSync()) {
+    await loadLocalItems();
+    await syncQueuedChanges({ silent: true });
+    return {};
+  }
+
+  await loadLocalItems();
+  const hasRemoteImages = state.items.some((item) => (item.remoteImages || []).length);
+  const signedImageUrlAge = lastSignedImageUrlRefreshAt
+    ? Date.now() - new Date(lastSignedImageUrlRefreshAt).getTime()
+    : Infinity;
+  const shouldRefreshSignedImageUrls = hasRemoteImages && signedImageUrlAge > SIGNED_IMAGE_URL_MAX_AGE_MS;
+  const canUseIncrementalPull = Boolean(
+    state.items.length &&
+    lastRemotePullAt &&
+    lastFullRemotePullAt &&
+    !shouldRefreshSignedImageUrls &&
+    Date.now() - new Date(lastFullRemotePullAt).getTime() < FULL_PULL_MAX_AGE_MS
+  );
+
+  return canUseIncrementalPull ? { since: lastRemotePullAt } : {};
 }
 
 function cacheRefs() {
@@ -185,10 +233,8 @@ function cacheRefs() {
   refs.emptyState = document.querySelector("#emptyState");
   refs.detailPanel = document.querySelector("#detailPanel");
   refs.csvFileInput = document.querySelector("#csvFileInput");
-  refs.syncButton = document.querySelector("#syncButton");
   refs.authDialog = document.querySelector("#authDialog");
   refs.authForm = document.querySelector("#authForm");
-  refs.authEmail = document.querySelector("#authEmail");
   refs.toast = document.querySelector("#toast");
 }
 
@@ -200,50 +246,53 @@ function exposeReactBridge() {
 	  getAutocompleteOptions,
 	  getChildCategoryOptions,
 	  getColorOptions,
+    getFilterSnapshot,
     getImageUrl,
     getMeasurementFieldsForItem,
     getParentCategoryOptions,
     isShoeCategory,
     removeSelectedImage,
+    resetFilters,
     saveImageEdit: saveImageEditFromOptions,
     saveSelectedItem: saveSelectedItemFromData,
     shareSelectedItem,
+    setFilters,
+    subscribeFilters,
     uploadImageFile: uploadSelectedImageFile
   };
 }
 
 function bindEvents() {
-  refs.searchInput.addEventListener("input", () => {
+  refs.searchInput?.addEventListener("input", () => {
     state.filters.query = refs.searchInput.value.trim();
     render();
   });
 
-  refs.categoryFilter.addEventListener("change", () => {
-    state.filters.category = refs.categoryFilter.value;
+  refs.categoryFilter?.addEventListener("change", () => {
+    state.filters.parentCategory = refs.categoryFilter.value;
+    state.filters.childCategory = "all";
     render();
   });
 
-  refs.brandFilter.addEventListener("change", () => {
-    state.filters.brand = refs.brandFilter.value;
+  refs.brandFilter?.addEventListener("change", () => {
+    state.filters.brands = refs.brandFilter.value === "all" ? [] : [refs.brandFilter.value];
     render();
   });
 
-  refs.colorFilter.addEventListener("change", () => {
-    state.filters.color = refs.colorFilter.value;
+  refs.colorFilter?.addEventListener("change", () => {
+    state.filters.colors = refs.colorFilter.value === "all" ? [] : [normalizeColor(refs.colorFilter.value)];
     render();
   });
 
-  refs.sortFilter.addEventListener("change", () => {
+  refs.sortFilter?.addEventListener("change", () => {
     state.filters.sort = refs.sortFilter.value;
     render();
   });
 
-  refs.csvFileInput.addEventListener("change", handleCsvFile);
-  refs.syncButton.addEventListener("click", handleSyncButton);
-
+  refs.csvFileInput?.addEventListener("change", handleCsvFile);
   refs.authForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    await requestMagicLink(refs.authEmail.value.trim());
+    await requestGoogleLogin();
   });
 
   document.addEventListener("change", handleDocumentChange);
@@ -298,9 +347,9 @@ function handleDocumentClick(event) {
 
   const ownedButton = event.target.closest("[data-owned]");
   if (ownedButton) {
-    state.filters.owned = ownedButton.dataset.owned;
+    state.filters.owned = ownedButton.dataset.owned === "all" ? [] : [ownedButton.dataset.owned];
     document.querySelectorAll("[data-owned]").forEach((button) => {
-      button.classList.toggle("active", button.dataset.owned === state.filters.owned);
+      button.classList.toggle("active", button.dataset.owned === "all" ? !state.filters.owned.length : state.filters.owned.includes(button.dataset.owned));
     });
     render();
     return;
@@ -356,6 +405,7 @@ function handleDocumentClick(event) {
       deleteSelectedItem();
       break;
     case "import-csv":
+      if (!requireAuthenticatedMutation()) return;
       refs.csvFileInput.click();
       break;
     case "export-csv":
@@ -406,6 +456,7 @@ async function handleDocumentSubmit(event) {
   if (!form) return;
 
   event.preventDefault();
+  if (!requireAuthenticatedMutation()) return;
   await saveSelectedItemFromForm(form);
 }
 
@@ -466,6 +517,45 @@ function dbDelete(storeName, key) {
   });
 }
 
+async function dbMetaValue(key) {
+  const record = await dbGet("meta", key);
+  return record?.value || "";
+}
+
+async function dbSetMetaValue(key, value) {
+  await dbPut("meta", { key, value });
+}
+
+async function restorePendingSync() {
+  const pending = await dbMetaValue("pendingSync");
+  if (!pending || typeof pending !== "object") return;
+
+  state.pendingItemIds = new Set(Array.isArray(pending.itemIds) ? pending.itemIds.filter(Boolean) : []);
+  state.pendingDeleteIds = new Set(Array.isArray(pending.deleteIds) ? pending.deleteIds.filter(Boolean) : []);
+  state.pendingImageDeletes = new Map(
+    Array.isArray(pending.imageDeletes)
+      ? pending.imageDeletes.filter((entry) => Array.isArray(entry) && entry[0])
+      : []
+  );
+}
+
+function serializePendingSync() {
+  return {
+    itemIds: [...state.pendingItemIds],
+    deleteIds: [...state.pendingDeleteIds],
+    imageDeletes: [...state.pendingImageDeletes.entries()]
+  };
+}
+
+function schedulePendingSyncPersist() {
+  persistPendingSync().catch((error) => console.warn("Pending sync state could not be saved", error));
+}
+
+async function persistPendingSync() {
+  if (!state.db) return;
+  await dbSetMetaValue("pendingSync", serializePendingSync());
+}
+
 async function loadLocalItems() {
   const items = await dbAll("items");
   const normalizedItems = [];
@@ -482,6 +572,16 @@ async function loadLocalItems() {
 
   state.items = normalizedItems.sort(sortByUpdated);
   if (normalizedIds.length) queueAutoSyncItems(normalizedIds);
+}
+
+async function pruneLocalItems(remoteIds) {
+  const items = await dbAll("items");
+  for (const item of items) {
+    if (!remoteIds.has(item.id)) {
+      await dbDelete("items", item.id);
+      if (state.selectedId === item.id) state.selectedId = null;
+    }
+  }
 }
 
 async function importDefaultCsv() {
@@ -502,6 +602,10 @@ async function importDefaultCsv() {
 async function handleCsvFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  if (!requireAuthenticatedMutation()) {
+    event.target.value = "";
+    return;
+  }
 
   try {
     const text = await file.text();
@@ -520,7 +624,7 @@ async function handleCsvFile(event) {
 }
 
 function csvToItems(text) {
-  const rows = parseCsv(text);
+  const rows = window.closetCsvUtils.parseCsv(text);
   return rows.map((row, index) => csvRowToItem(row, index));
 }
 
@@ -533,6 +637,7 @@ async function upsertItems(items) {
       imageIds: existing?.imageIds || [],
       primaryImageId: existing?.primaryImageId || null,
       remoteImages: existing?.remoteImages || [],
+      measurementsDirty: existing?.measurementsDirty ?? !sameMeasurements(existing?.measurements || {}, item.measurements || {}),
       externalImageUrl: existing?.externalImageUrl || item.externalImageUrl || "",
       externalImageEdit: existing?.externalImageEdit || item.externalImageEdit || defaultImageEdit(),
       productUrl: existing?.productUrl || item.productUrl || "",
@@ -573,9 +678,11 @@ function csvRowToItem(row, index) {
     purchaseDate,
     owned: String(row["보유"] || "").toLowerCase() === "yes",
     measurements,
+    measurementsDirty: Object.keys(measurements).length > 0,
     imageIds: [],
     primaryImageId: null,
     remoteImages: [],
+    imagesDirty: false,
     externalImageUrl: "",
     externalImageEdit: defaultImageEdit(),
     source: "csv",
@@ -586,58 +693,6 @@ function csvRowToItem(row, index) {
   };
 }
 
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
-  const input = text.replace(/^\uFEFF/, "");
-
-  for (let index = 0; index < input.length; index += 1) {
-    const char = input[index];
-    const next = input[index + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        field += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === "," && !inQuotes) {
-      row.push(field);
-      field = "";
-      continue;
-    }
-
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") index += 1;
-      row.push(field);
-      if (row.some((cell) => cell.trim() !== "")) rows.push(row);
-      row = [];
-      field = "";
-      continue;
-    }
-
-    field += char;
-  }
-
-  row.push(field);
-  if (row.some((cell) => cell.trim() !== "")) rows.push(row);
-
-  const headers = rows.shift()?.map((header) => header.trim()) || [];
-  return rows.map((cells) => {
-    const record = {};
-    headers.forEach((header, index) => {
-      record[header] = cells[index] || "";
-    });
-    return record;
-  });
-}
-
 function render() {
   syncFilterControls();
   renderFilterOptions();
@@ -645,13 +700,14 @@ function render() {
   renderItemList();
   renderDetail();
   updateSyncButton();
+  emitFilterChange();
 }
 
 function syncFilterControls() {
-  refs.searchInput.value = state.filters.query;
-  refs.sortFilter.value = state.filters.sort;
+  if (refs.searchInput) refs.searchInput.value = state.filters.query;
+  if (refs.sortFilter) refs.sortFilter.value = state.filters.sort;
   document.querySelectorAll("[data-owned]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.owned === state.filters.owned);
+    button.classList.toggle("active", button.dataset.owned === "all" ? !state.filters.owned.length : state.filters.owned.includes(button.dataset.owned));
   });
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === state.view);
@@ -659,24 +715,27 @@ function syncFilterControls() {
 }
 
 function renderFilterOptions() {
-  fillSelect(refs.categoryFilter, uniqueValues(state.items.map((item) => item.parentCategory)), "전체 카테고리", state.filters.category);
-  fillSelect(refs.brandFilter, uniqueValues(state.items.map((item) => item.brand)), "전체 브랜드", state.filters.brand);
-  fillSelect(refs.colorFilter, getFilterColorOptions(), "전체 색상", normalizeColor(state.filters.color));
+  fillSelect(refs.categoryFilter, getParentCategoryOptions(), "전체 카테고리", state.filters.parentCategory);
+  fillSelect(refs.brandFilter, uniqueValues(state.items.map((item) => item.brand)), "전체 브랜드", state.filters.brands[0] || "all");
+  fillSelect(refs.colorFilter, getFilterColorOptions(), "전체 색상", normalizeColor(state.filters.colors[0] || "all"));
 }
 
 function fillSelect(select, values, allLabel, selected) {
+  if (!select) return;
   const options = [`<option value="all">${escapeHtml(allLabel)}</option>`]
     .concat(values.map((value) => `<option value="${escapeAttr(value)}">${escapeHtml(value)}</option>`));
   select.innerHTML = options.join("");
   select.value = values.includes(selected) ? selected : "all";
   if (select.value !== selected) {
-    if (select === refs.categoryFilter) state.filters.category = select.value;
-    if (select === refs.brandFilter) state.filters.brand = select.value;
-    if (select === refs.colorFilter) state.filters.color = select.value;
+    if (select === refs.categoryFilter) state.filters.parentCategory = select.value;
+    if (select === refs.brandFilter) state.filters.brands = select.value === "all" ? [] : [select.value];
+    if (select === refs.colorFilter) state.filters.colors = select.value === "all" ? [] : [normalizeColor(select.value)];
   }
 }
 
 function renderSummary() {
+  if (!refs.summaryRow) return;
+
   const owned = state.items.filter((item) => item.owned);
   const purchaseTotal = owned.reduce((sum, item) => sum + (item.purchasePrice || 0), 0);
   const retailTotal = owned.reduce((sum, item) => sum + (item.retailPrice || 0), 0);
@@ -698,8 +757,20 @@ function renderSummary() {
 }
 
 function renderItemList() {
+  if (state.loading) {
+    refs.resultTitle.textContent = "제품";
+    refs.resultCount.textContent = "불러오는 중";
+    refs.itemList.className = state.view === "list" ? "item-grid list" : "item-grid";
+    refs.emptyState.hidden = true;
+    refs.itemList.innerHTML = "";
+    return;
+  }
+
   const items = getVisibleItems();
-  refs.resultTitle.textContent = state.filters.category === "all" ? "제품" : state.filters.category;
+  const title = state.filters.childCategory !== "all"
+    ? state.filters.childCategory
+    : state.filters.parentCategory === "all" ? "제품" : state.filters.parentCategory;
+  refs.resultTitle.textContent = title;
   refs.resultCount.textContent = `${items.length}개`;
   refs.itemList.className = state.view === "list" ? "item-grid list" : "item-grid";
   refs.emptyState.hidden = items.length > 0;
@@ -995,10 +1066,10 @@ function uniqueCustomMeasurementLabel(grid) {
 }
 
 function getParentCategoryOptions() {
-  return uniqueValues([
+  return window.closetFilterUtils.sortParentCategoryOptions(uniqueValues([
     ...Object.keys(DEFAULT_CATEGORY_TREE),
     ...state.items.map((item) => item.parentCategory)
-  ]);
+  ]));
 }
 
 function getChildCategoryOptions(parentCategory) {
@@ -1024,12 +1095,58 @@ function getChildCategoryOptions(parentCategory) {
 	  return field ? options[field] || [] : options;
 	}
 	
-	function getFilterColorOptions() {
-  return uniqueValues([
-    ...DEFAULT_COLOR_OPTIONS,
-    ...state.colorOptions,
-    ...state.items.map((item) => item.color)
-  ].map(normalizeColor));
+		function getFilterColorOptions() {
+	  return sortColorOptions([
+	    ...DEFAULT_COLOR_OPTIONS,
+	    ...state.colorOptions,
+	    ...state.items.map((item) => item.color)
+	  ].filter((color) => color && !HIDDEN_FILTER_COLOR_OPTIONS.has(normalizeColor(color))));
+		}
+
+function getFilterSnapshot() {
+  const visibleItems = getVisibleItems();
+  const parentCategories = getParentCategoryOptions();
+  const childCategories = state.filters.parentCategory === "all"
+    ? uniqueValues(state.items.map((item) => item.category))
+    : getChildCategoryOptions(state.filters.parentCategory);
+
+  return window.closetFilterUtils.getFilterSnapshot({
+    filters: state.filters,
+    items: state.items,
+    visibleItems,
+    parentCategories,
+    childCategories,
+    brands: uniqueValues(state.items.map((item) => item.brand)),
+    colors: getFilterColorOptions(),
+    loading: state.loading
+  });
+}
+
+function setFilters(nextPartialFilters = {}) {
+  state.filters = window.closetFilterUtils.applyFilterPatch(state.filters, nextPartialFilters, {
+    cleanText,
+    normalizeColor,
+    getChildCategoryOptions
+  });
+  render();
+}
+
+function resetFilters() {
+  state.filters = window.closetFilterUtils.resetFilters(state.filters);
+  render();
+}
+
+function subscribeFilters(listener) {
+  if (typeof listener !== "function") return () => {};
+  filterSubscribers.add(listener);
+  listener(getFilterSnapshot());
+  return () => filterSubscribers.delete(listener);
+}
+
+function emitFilterChange() {
+  const snapshot = getFilterSnapshot();
+  window.dispatchEvent(new CustomEvent("closet:filters-change", { detail: snapshot }));
+  filterSubscribers.forEach((listener) => listener(snapshot));
 }
 
 function rememberColorOption(color) {
@@ -1127,27 +1244,10 @@ function isShoeCategory(item) {
 }
 
 function getVisibleItems() {
-  const query = state.filters.query.toLowerCase();
-  const items = state.items.filter((item) => {
-    const haystack = [item.name, item.brand, item.color, item.category, item.parentCategory, item.sizeLabel]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    if (query && !haystack.includes(query)) return false;
-    if (state.filters.category !== "all" && item.parentCategory !== state.filters.category) return false;
-    if (state.filters.brand !== "all" && item.brand !== state.filters.brand) return false;
-    if (state.filters.color !== "all" && item.color !== state.filters.color) return false;
-    if (state.filters.owned === "owned" && !item.owned) return false;
-    if (state.filters.owned === "archived" && item.owned) return false;
-    return true;
-  });
-
-  return items.sort((a, b) => {
-    if (state.filters.sort === "purchaseDate") return compareDate(b.purchaseDate, a.purchaseDate);
-    if (state.filters.sort === "priceDesc") return (b.purchasePrice || 0) - (a.purchasePrice || 0);
-    if (state.filters.sort === "name") return (a.name || "").localeCompare(b.name || "", "ko");
-    return sortByUpdated(a, b);
+  return window.closetFilterUtils.getVisibleItems(state.items, state.filters, {
+    normalizeColor,
+    compareDate,
+    sortByUpdated
   });
 }
 
@@ -1164,6 +1264,7 @@ function closeDetail() {
 }
 
 async function createNewItem() {
+  if (!requireAuthenticatedMutation()) return;
   const now = new Date().toISOString();
   const item = {
     id: `item-${crypto.randomUUID()}`,
@@ -1181,9 +1282,11 @@ async function createNewItem() {
     purchaseDate: "",
     owned: true,
     measurements: {},
+    measurementsDirty: false,
     imageIds: [],
     primaryImageId: null,
     remoteImages: [],
+    imagesDirty: false,
     externalImageUrl: "",
     externalImageEdit: defaultImageEdit(),
     source: "manual",
@@ -1200,6 +1303,7 @@ async function createNewItem() {
 }
 
 async function saveSelectedItemFromForm(form) {
+  if (!requireAuthenticatedMutation()) return;
   const item = getSelectedItem();
   if (!item) return;
 
@@ -1231,6 +1335,7 @@ async function saveSelectedItemFromForm(form) {
     purchaseDate: cleanText(formData.get("purchaseDate")),
     owned: formData.get("owned") === "on",
     measurements,
+    measurementsDirty: item.measurementsDirty || !sameMeasurements(item.measurements, measurements),
     updatedAt: new Date().toISOString()
   };
 
@@ -1243,6 +1348,7 @@ async function saveSelectedItemFromForm(form) {
 }
 
 async function saveSelectedItemFromData(data) {
+  if (!requireAuthenticatedMutation()) return { ok: false };
   const item = getSelectedItem();
   if (!item) return { ok: false };
 
@@ -1274,6 +1380,7 @@ async function saveSelectedItemFromData(data) {
     measurements: sanitizeMeasurementData(data.measurements),
     updatedAt: new Date().toISOString()
   };
+  updated.measurementsDirty = item.measurementsDirty || !sameMeasurements(item.measurements, updated.measurements);
 
   await saveItem(updated);
   rememberColorOption(updated.color);
@@ -1294,6 +1401,13 @@ function sanitizeMeasurementData(measurements) {
   return result;
 }
 
+function sameMeasurements(a = {}, b = {}) {
+  const aKeys = Object.keys(a).sort();
+  const bKeys = Object.keys(b).sort();
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key, index) => key === bKeys[index] && Number(a[key]) === Number(b[key]));
+}
+
 async function saveItem(item) {
   await dbPut("items", normalizeItemColor(item));
 }
@@ -1306,6 +1420,7 @@ function replaceLocalItem(item) {
 }
 
 async function deleteSelectedItem() {
+  if (!requireAuthenticatedMutation()) return;
   const item = getSelectedItem();
   if (!item) return;
 
@@ -1317,6 +1432,10 @@ async function deleteSelectedItem() {
     queueAutoDeleteImage(imageId, image?.storagePath || "");
     await dbDelete("images", imageId);
     revokeImageUrl(imageId);
+  }
+
+  for (const remote of item.remoteImages || []) {
+    queueAutoDeleteImage(remote.id, remote.storagePath || "");
   }
 
   await dbDelete("items", item.id);
@@ -1343,6 +1462,7 @@ async function handleImageFile(event) {
 }
 
 async function uploadSelectedImageFile(file) {
+  if (!requireAuthenticatedMutation()) return { ok: false };
   const item = getSelectedItem();
   if (!file || !item) return { ok: false };
 
@@ -1353,6 +1473,14 @@ async function uploadSelectedImageFile(file) {
     ...item,
     imageIds: [image.id, ...(item.imageIds || []).filter((id) => id !== image.id)],
     primaryImageId: image.id,
+    imagesDirty: true,
+    externalImageUrl: "",
+    externalImageEdit: defaultImageEdit(),
+    raw: {
+      ...(item.raw || {}),
+      externalImageUrl: null,
+      externalImageEdit: null
+    },
     updatedAt: new Date().toISOString()
   };
 
@@ -1370,49 +1498,9 @@ async function compressImage(file, itemId) {
 }
 
 async function createEditedImage(sourceBlob, itemId, options = {}) {
-  const bitmap = await createImageBitmap(sourceBlob);
-  const maxSide = 1600;
-  const outputSize = options.outputSize || maxSide;
-  const editScale = Number(options.scale ?? 1);
-  const offsetX = Number(options.offsetX ?? 0);
-  const offsetY = Number(options.offsetY ?? 0);
-  const containScale = Math.min(outputSize / bitmap.width, outputSize / bitmap.height);
-  const drawWidth = Math.max(1, Math.round(bitmap.width * containScale * editScale));
-  const drawHeight = Math.max(1, Math.round(bitmap.height * containScale * editScale));
-  const drawX = Math.round((outputSize - drawWidth) / 2 + outputSize * (offsetX / 100));
-  const drawY = Math.round((outputSize - drawHeight) / 2 + outputSize * (offsetY / 100));
-  const canvas = document.createElement("canvas");
-  canvas.width = outputSize;
-  canvas.height = outputSize;
-  const context = canvas.getContext("2d", { alpha: false });
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, outputSize, outputSize);
-  context.drawImage(bitmap, drawX, drawY, drawWidth, drawHeight);
-
-  const blob = await new Promise((resolve, reject) => {
-    canvas.toBlob((result) => {
-      if (result) resolve(result);
-      else reject(new Error("Image compression failed"));
-    }, "image/webp", 0.78);
-  });
-
-  bitmap.close?.();
-
-  return {
-    id: `img-${crypto.randomUUID()}`,
-    itemId,
-    blob,
-    mime: blob.type || "image/webp",
-    width: outputSize,
-    height: outputSize,
-    edit: {
-      scale: editScale,
-      offsetX,
-      offsetY,
-      background: "#ffffff"
-    },
-    createdAt: new Date().toISOString()
-  };
+  const imageUtils = window.closetImageUtils;
+  if (!imageUtils?.createEditedImage) throw new Error("Image utilities are not loaded");
+  return imageUtils.createEditedImage(sourceBlob, itemId, options);
 }
 
 async function addImageFromUrl() {
@@ -1422,6 +1510,7 @@ async function addImageFromUrl() {
 }
 
 async function addImageFromUrlValue(value) {
+  if (!requireAuthenticatedMutation()) return { ok: false };
   const item = getSelectedItem();
   const url = normalizeImageUrl(value);
   if (!item) return;
@@ -1441,6 +1530,7 @@ async function attachImageToItem(item, image, message) {
     ...item,
     imageIds: [image.id, ...(item.imageIds || []).filter((id) => id !== image.id)],
     primaryImageId: image.id,
+    imagesDirty: true,
     externalImageUrl: "",
     externalImageEdit: defaultImageEdit(),
     raw: {
@@ -1526,6 +1616,7 @@ async function saveImageEdit() {
 }
 
 async function saveImageEditFromOptions(options) {
+  if (!requireAuthenticatedMutation()) return { ok: false };
   const item = getSelectedItem();
   if (!item) return { ok: false };
   const editOptions = normalizeImageEdit(options);
@@ -1541,11 +1632,12 @@ async function saveImageEditFromOptions(options) {
     if (!sourceBlob) throw new Error("No image source");
 
     const image = await createEditedImage(sourceBlob, item.id, editOptions);
-    const previousImageId = item.primaryImageId || "";
+    const previousImageId = item.primaryImageId || primary.remoteId || "";
     if (previousImageId) {
       const previous = await dbGet("images", previousImageId);
       image.id = previousImageId;
-      image.storagePath = previous?.storagePath || "";
+      image.storagePath = previous?.storagePath || primary.storagePath || "";
+      image.needsUpload = true;
     }
 
     await dbPut("images", image);
@@ -1555,6 +1647,7 @@ async function saveImageEditFromOptions(options) {
       ...item,
       imageIds: [image.id, ...(item.imageIds || []).filter((id) => id !== image.id)],
       primaryImageId: image.id,
+      imagesDirty: true,
       updatedAt: new Date().toISOString()
     };
 
@@ -1607,8 +1700,10 @@ async function getPrimaryImageBlob(primary) {
 }
 
 async function removeSelectedImage() {
+  if (!requireAuthenticatedMutation()) return;
   const item = getSelectedItem();
   if (!item) return;
+  const primary = getPrimaryImage(item);
 
   if (!item.primaryImageId && item.externalImageUrl) {
     const updated = {
@@ -1632,6 +1727,21 @@ async function removeSelectedImage() {
     return;
   }
 
+  if (!item.primaryImageId && primary.remoteId) {
+    queueAutoDeleteImage(primary.remoteId, primary.storagePath || "");
+    const updated = {
+      ...item,
+      remoteImages: (item.remoteImages || []).filter((remote) => remote.id !== primary.remoteId),
+      updatedAt: new Date().toISOString()
+    };
+
+    await saveItem(updated);
+    replaceLocalItem(updated);
+    render();
+    showToast("사진을 삭제했습니다.");
+    return;
+  }
+
   if (!item.primaryImageId) return;
 
   const imageId = item.primaryImageId;
@@ -1646,6 +1756,7 @@ async function removeSelectedImage() {
     imageIds: remaining,
     primaryImageId: remaining[0] || null,
     remoteImages: (item.remoteImages || []).filter((remote) => remote.id !== imageId),
+    imagesDirty: true,
     updatedAt: new Date().toISOString()
   };
 
@@ -1710,7 +1821,27 @@ function getPrimaryImage(item) {
 
   const remote = [...(item?.remoteImages || [])].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))[0];
   const remoteUrl = remote?.signedUrl || remote?.publicUrl || "";
-  return { localId: "", remoteUrl, externalUrl: false, editable: Boolean(remoteUrl), edit: defaultImageEdit() };
+  return {
+    localId: "",
+    remoteId: remote?.id || "",
+    storagePath: remote?.storagePath || "",
+    remoteUrl,
+    externalUrl: false,
+    editable: Boolean(remoteUrl),
+    edit: defaultImageEdit()
+  };
+}
+
+function appendCacheBuster(url, version) {
+  if (!url || !version) return url || "";
+
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("v", String(version));
+    return parsed.href;
+  } catch (error) {
+    return url;
+  }
 }
 
 function getInitial(item) {
@@ -1723,7 +1854,7 @@ function exportJson() {
     exportedAt: new Date().toISOString(),
     items: state.items.map(sanitizeItemForExport)
   };
-  downloadFile(`closet-backup-${dateStamp()}.json`, JSON.stringify(payload, null, 2), "application/json");
+  window.closetCsvUtils.downloadFile(`closet-backup-${window.closetCsvUtils.dateStamp()}.json`, JSON.stringify(payload, null, 2), "application/json");
 }
 
 function exportCsv() {
@@ -1761,20 +1892,8 @@ function exportCsv() {
     ...MEASURE_FIELDS.map((field) => item.measurements?.[field] ?? "")
   ]);
 
-  const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
-  downloadFile(`closet-${dateStamp()}.csv`, csv, "text/csv;charset=utf-8");
-}
-
-function downloadFile(filename, content, type) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  const csv = window.closetCsvUtils.buildCsv([headers, ...rows]);
+  window.closetCsvUtils.downloadFile(`closet-${window.closetCsvUtils.dateStamp()}.csv`, csv, "text/csv;charset=utf-8");
 }
 
 async function initSupabase() {
@@ -1790,7 +1909,7 @@ async function initSupabase() {
     if (!createClient) {
       throw new Error("Supabase client loader is missing.");
     }
-    state.supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+  state.supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
     const { data } = await state.supabase.auth.getSession();
     state.session = data.session || null;
     state.supabaseReady = true;
@@ -1801,6 +1920,7 @@ async function initSupabase() {
       state.session = session;
       updateSyncButton();
       if (session) {
+        resetSupabaseLookupCaches();
         state.authPrompted = false;
         if (refs.authDialog?.open) refs.authDialog.close();
         resumeAuthenticatedSession();
@@ -1820,25 +1940,12 @@ async function initSupabase() {
 }
 
 function updateSyncButton() {
-  if (!refs.syncButton) return;
-
-  if (state.syncing) {
-    refs.syncButton.textContent = "동기화 중";
-    refs.syncButton.disabled = true;
-    return;
-  }
-
-  refs.syncButton.disabled = false;
-  if (!state.supabaseReady) refs.syncButton.textContent = "로컬 저장";
-  else if (!state.session) refs.syncButton.textContent = "로그인";
-  else if (state.lastSyncError) refs.syncButton.textContent = "다시 시도";
-  else if (hasPendingSync()) refs.syncButton.textContent = "저장 대기";
-  else refs.syncButton.textContent = "자동 저장";
+  return;
 }
 
 async function handleSyncButton() {
   if (!state.supabaseReady) {
-    showToast("Supabase 연결 전에는 이 브라우저에만 저장됩니다.");
+    showToast("Supabase 설정 또는 네트워크 연결을 확인해주세요.");
     return;
   }
 
@@ -1856,7 +1963,14 @@ async function handleSyncButton() {
 }
 
 function shouldRequireAuth() {
-  return Boolean(state.supabaseReady && !state.session);
+  return !state.session;
+}
+
+function requireAuthenticatedMutation() {
+  if (state.session) return true;
+  showAuthDialog();
+  showToast("로그인 후 사용할 수 있습니다.");
+  return false;
 }
 
 function showAuthDialog(options = {}) {
@@ -1868,21 +1982,31 @@ function showAuthDialog(options = {}) {
 }
 
 async function resumeAuthenticatedSession() {
-  await loadLocalItems();
-
-  if (state.items.length) {
-    await syncNow({ silent: true });
-    return;
-  }
-
-  await pullFromSupabase({ silent: true });
+  state.loading = true;
   render();
+
+  try {
+    const pullOptions = await prepareSessionDataLoad();
+    await pullFromSupabase({ silent: true, ...pullOptions });
+  } catch (error) {
+    console.error(error);
+    showToast("Supabase 데이터를 불러오지 못했습니다.");
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+function resetSupabaseLookupCaches() {
+  state.categoryCache.clear();
+  state.colorCache.clear();
 }
 
 function queueAutoSyncItem(itemId) {
   if (!itemId) return;
   state.pendingDeleteIds.delete(itemId);
   state.pendingItemIds.add(itemId);
+  schedulePendingSyncPersist();
   scheduleAutoSync();
 }
 
@@ -1891,6 +2015,7 @@ function queueAutoSyncItems(itemIds) {
     state.pendingDeleteIds.delete(itemId);
     state.pendingItemIds.add(itemId);
   });
+  schedulePendingSyncPersist();
   scheduleAutoSync();
 }
 
@@ -1898,12 +2023,14 @@ function queueAutoDelete(itemId) {
   if (!itemId) return;
   state.pendingItemIds.delete(itemId);
   state.pendingDeleteIds.add(itemId);
+  schedulePendingSyncPersist();
   scheduleAutoSync();
 }
 
 function queueAutoDeleteImage(imageId, storagePath = "") {
   if (!imageId) return;
   state.pendingImageDeletes.set(imageId, storagePath);
+  schedulePendingSyncPersist();
   scheduleAutoSync();
 }
 
@@ -1937,17 +2064,20 @@ async function syncQueuedChanges(options = {}) {
     for (const [imageId, storagePath] of [...state.pendingImageDeletes.entries()]) {
       await deleteImageFromSupabase(imageId, storagePath);
       state.pendingImageDeletes.delete(imageId);
+      await persistPendingSync();
     }
 
     for (const itemId of [...state.pendingDeleteIds]) {
       await deleteItemFromSupabase(itemId);
       state.pendingDeleteIds.delete(itemId);
+      await persistPendingSync();
     }
 
     for (const itemId of [...state.pendingItemIds]) {
       const item = state.items.find((candidate) => candidate.id === itemId);
       if (item) await pushItemToSupabase(item);
       state.pendingItemIds.delete(itemId);
+      await persistPendingSync();
     }
 
     state.lastSyncError = null;
@@ -1959,6 +2089,7 @@ async function syncQueuedChanges(options = {}) {
     if (!options.silent) showToast("자동 동기화에 실패했습니다. 다시 시도할 수 있습니다.");
   } finally {
     state.syncing = false;
+    await persistPendingSync();
     updateSyncButton();
   }
 }
@@ -1967,13 +2098,16 @@ function hasPendingSync() {
   return Boolean(state.pendingItemIds.size || state.pendingDeleteIds.size || state.pendingImageDeletes.size);
 }
 
-async function requestMagicLink(email) {
-  if (!email || !state.supabase) return;
+async function requestGoogleLogin() {
+  if (!state.supabase) {
+    showToast("Supabase 설정 또는 네트워크 연결을 확인해주세요.");
+    return;
+  }
 
-  const { error } = await state.supabase.auth.signInWithOtp({
-    email,
+  const { error } = await state.supabase.auth.signInWithOAuth({
+    provider: "google",
     options: {
-      emailRedirectTo: `${window.location.origin}${window.location.pathname}`
+      redirectTo: `${window.location.origin}${window.location.pathname}`
     }
   });
 
@@ -1981,9 +2115,6 @@ async function requestMagicLink(email) {
     showToast(error.message);
     return;
   }
-
-  refs.authDialog.close();
-  showToast("로그인 링크를 이메일로 보냈습니다.");
 }
 
 async function syncNow(options = {}) {
@@ -2006,6 +2137,7 @@ async function syncNow(options = {}) {
     state.pendingItemIds.clear();
     state.pendingDeleteIds.clear();
     state.pendingImageDeletes.clear();
+    await persistPendingSync();
     state.lastSyncError = null;
     state.lastSyncedAt = new Date().toISOString();
     if (!options.silent) showToast("동기화했습니다.");
@@ -2027,6 +2159,7 @@ async function pushItemToSupabase(item) {
   const userId = state.session.user.id;
   await ensureCategoryRowsForItem(item, userId);
   await ensureColorRowForItem(item, userId);
+  const hasUploadedImage = Boolean(item.primaryImageId || (item.imageIds || []).length);
   const row = {
     id: item.id,
     user_id: userId,
@@ -2037,7 +2170,7 @@ async function pushItemToSupabase(item) {
     category: item.category || null,
     brand: item.brand || null,
     color: item.color || null,
-    image_url: item.externalImageUrl || null,
+    image_url: hasUploadedImage ? null : item.externalImageUrl || null,
     image_edit: item.externalImageEdit || {},
     size_label: item.sizeLabel || null,
     shoe_size: item.shoeSize || null,
@@ -2047,8 +2180,8 @@ async function pushItemToSupabase(item) {
     owned: item.owned,
     raw: {
       ...(item.raw || {}),
-      externalImageUrl: item.externalImageUrl || null,
-      externalImageEdit: item.externalImageEdit || null
+      externalImageUrl: hasUploadedImage ? null : item.externalImageUrl || null,
+      externalImageEdit: hasUploadedImage ? null : item.externalImageEdit || null
     },
     created_at: item.createdAt || new Date().toISOString(),
     updated_at: item.updatedAt || new Date().toISOString()
@@ -2056,6 +2189,14 @@ async function pushItemToSupabase(item) {
 
   const { error } = await state.supabase.from("items").upsert(row);
   if (error) throw error;
+
+  await pushMeasurementsToSupabase(item);
+
+  await pushImagesToSupabase(item, userId);
+}
+
+async function pushMeasurementsToSupabase(item) {
+  if (!item.measurementsDirty) return;
 
   await state.supabase.from("item_measurements").delete().eq("item_id", item.id);
   const measurements = Object.entries(item.measurements || {}).map(([label, value], index) => {
@@ -2071,12 +2212,16 @@ async function pushItemToSupabase(item) {
       sort_order: index * 10
     };
   });
+
   if (measurements.length) {
     const { error: measureError } = await state.supabase.from("item_measurements").insert(measurements);
     if (measureError) throw measureError;
   }
 
-  await pushImagesToSupabase(item, userId);
+  const cleanItem = { ...item, measurementsDirty: false };
+  item.measurementsDirty = false;
+  await dbPut("items", cleanItem);
+  replaceLocalItem(cleanItem);
 }
 
 async function ensureCategoryRowsForItem(item, userId) {
@@ -2091,6 +2236,10 @@ async function ensureCategoryRowsForItem(item, userId) {
 }
 
 async function findOrCreateCategory(name, parentId, userId) {
+  const cacheKey = `${userId}:${parentId || "root"}:${name.toLocaleLowerCase("ko-KR")}`;
+  const cached = state.categoryCache.get(cacheKey);
+  if (cached) return cached;
+
   let query = state.supabase
     .from("categories")
     .select("id")
@@ -2101,7 +2250,10 @@ async function findOrCreateCategory(name, parentId, userId) {
 
   const { data, error } = await query;
   if (error) throw error;
-  if (data?.[0]) return data[0];
+  if (data?.[0]) {
+    state.categoryCache.set(cacheKey, data[0]);
+    return data[0];
+  }
 
   const { data: inserted, error: insertError } = await state.supabase
     .from("categories")
@@ -2115,6 +2267,7 @@ async function findOrCreateCategory(name, parentId, userId) {
     .single();
 
   if (insertError) throw insertError;
+  state.categoryCache.set(cacheKey, inserted);
   return inserted;
 }
 
@@ -2137,6 +2290,10 @@ async function ensureColorRowForItem(item, userId) {
 }
 
 async function findOrCreateColor(name, userId) {
+  const cacheKey = `${userId}:${name.toLocaleLowerCase("ko-KR")}`;
+  const cached = state.colorCache.get(cacheKey);
+  if (cached) return cached;
+
   const { data, error } = await state.supabase
     .from("colors")
     .select("id")
@@ -2144,7 +2301,10 @@ async function findOrCreateColor(name, userId) {
     .limit(1);
 
   if (error) throw error;
-  if (data?.[0]) return data[0];
+  if (data?.[0]) {
+    state.colorCache.set(cacheKey, data[0]);
+    return data[0];
+  }
 
   const { data: inserted, error: insertError } = await state.supabase
     .from("colors")
@@ -2157,6 +2317,7 @@ async function findOrCreateColor(name, userId) {
     .single();
 
   if (insertError) throw insertError;
+  state.colorCache.set(cacheKey, inserted);
   return inserted;
 }
 
@@ -2211,18 +2372,36 @@ async function ensureMeasurementDefinitionsLoaded() {
 
 async function pushImagesToSupabase(item, userId) {
   const imageIds = item.imageIds || [];
+  const images = [];
+
   for (const imageId of imageIds) {
     const image = await dbGet("images", imageId);
     if (!image?.blob) continue;
+    images.push(image);
+  }
 
+  if (!images.length) return;
+  const hasImageChanges = Boolean(item.imagesDirty || images.some((image) => !image.storagePath || image.needsUpload));
+  if (!hasImageChanges) return;
+
+  const { error: primaryResetError } = await state.supabase
+    .from("item_images")
+    .update({ is_primary: false })
+    .eq("item_id", item.id);
+  if (primaryResetError) throw primaryResetError;
+
+  for (const image of images) {
     const storagePath = image.storagePath || `${userId}/${item.id}/${image.id}.webp`;
-    const { error: uploadError } = await state.supabase.storage
-      .from("wardrobe-images")
-      .upload(storagePath, image.blob, {
-        contentType: image.mime || image.blob.type || "image/webp",
-        upsert: true
-      });
-    if (uploadError) throw uploadError;
+    const shouldUpload = !image.storagePath || image.needsUpload;
+    if (shouldUpload) {
+      const { error: uploadError } = await state.supabase.storage
+        .from("wardrobe-images")
+        .upload(storagePath, image.blob, {
+          contentType: image.mime || image.blob.type || "image/webp",
+          upsert: true
+        });
+      if (uploadError) throw uploadError;
+    }
 
     const imageRow = {
       id: image.id,
@@ -2237,47 +2416,93 @@ async function pushImagesToSupabase(item, userId) {
     const { error: imageError } = await state.supabase.from("item_images").upsert(imageRow);
     if (imageError) throw imageError;
 
-    if (!image.storagePath) {
-      await dbPut("images", { ...image, storagePath });
+    if (shouldUpload || !image.storagePath || image.needsUpload) {
+      await dbPut("images", { ...image, storagePath, needsUpload: false });
     }
+  }
+
+  if (item.imagesDirty) {
+    const cleanItem = { ...item, imagesDirty: false };
+    item.imagesDirty = false;
+    await dbPut("items", cleanItem);
+    replaceLocalItem(cleanItem);
   }
 }
 
 async function pullFromSupabase(options = {}) {
   if (!state.supabase || !state.session) return;
+  const since = cleanText(options.since);
+  const incremental = Boolean(since);
+  const pulledAt = new Date().toISOString();
 
-  const [{ data: itemRows, error: itemError }, { data: definitionRows, error: definitionError }, { data: measureRows, error: measureError }, { data: imageRows, error: imageError }, colorRows] =
-    await Promise.all([
-      state.supabase.from("items").select("*").order("updated_at", { ascending: false }),
-      state.supabase.from("measurement_definitions").select("*"),
-      state.supabase.from("item_measurements").select("*"),
-      state.supabase.from("item_images").select("*"),
-      fetchColorRows()
-    ]);
+  let itemQuery = state.supabase
+    .from("items")
+    .select("*")
+    .order("updated_at", { ascending: false });
 
+  if (incremental) {
+    itemQuery = itemQuery.gt("updated_at", since);
+  }
+
+  const { data: itemRows, error: itemError } = await itemQuery;
   if (itemError) throw itemError;
+
+  const changedItemIds = (itemRows || []).map((row) => row.id);
+  const definitionPromise = incremental
+    ? Promise.resolve({ data: null, error: null })
+    : state.supabase.from("measurement_definitions").select("*");
+  const measurePromise = !incremental
+    ? state.supabase.from("item_measurements").select("*")
+    : !changedItemIds.length
+      ? Promise.resolve({ data: [], error: null })
+      : state.supabase
+      .from("item_measurements")
+      .select("*")
+      .in("item_id", changedItemIds);
+  const imagePromise = !incremental
+    ? state.supabase.from("item_images").select("*").order("created_at", { ascending: false })
+    : !changedItemIds.length
+      ? Promise.resolve({ data: [], error: null })
+      : state.supabase
+      .from("item_images")
+      .select("*")
+      .in("item_id", changedItemIds)
+      .order("created_at", { ascending: false });
+  const colorPromise = incremental ? Promise.resolve([]) : fetchColorRows();
+
+  const [{ data: definitionRows, error: definitionError }, { data: measureRows, error: measureError }, { data: imageRows, error: imageError }, colorRows] =
+    await Promise.all([definitionPromise, measurePromise, imagePromise, colorPromise]);
+
   if (definitionError) throw definitionError;
   if (measureError) throw measureError;
   if (imageError) throw imageError;
 
-  hydrateMeasurementDefinitionIds(definitionRows || []);
-  hydrateColorOptions(colorRows || []);
+  if (!incremental) {
+    hydrateMeasurementDefinitionIds(definitionRows || []);
+    hydrateColorOptions(colorRows || []);
+  }
 
   const measurementsByItem = groupBy(measureRows || [], "item_id");
   const imagesByItem = groupBy(imageRows || [], "item_id");
+  const signedUrlByPath = await createSignedImageUrlMap(imageRows || []);
+  const remoteIds = new Set((itemRows || []).map((row) => row.id));
+
+  if (!incremental) {
+    await pruneLocalItems(remoteIds);
+  }
 
   for (const row of itemRows || []) {
-    const remoteImages = await Promise.all((imagesByItem.get(row.id) || []).map(async (image) => {
-      const { data } = await state.supabase.storage.from("wardrobe-images").createSignedUrl(image.storage_path, 3600);
+    const remoteImages = (imagesByItem.get(row.id) || []).map((image) => {
+      const signedUrl = signedUrlByPath.get(image.storage_path) || "";
       return {
         id: image.id,
         storagePath: image.storage_path,
-        signedUrl: data?.signedUrl || "",
+        signedUrl,
         isPrimary: image.is_primary,
         width: image.width,
         height: image.height
       };
-    }));
+    });
 
     const existing = await dbGet("items", row.id);
     const item = {
@@ -2298,9 +2523,11 @@ async function pullFromSupabase(options = {}) {
       measurements: Object.fromEntries((measurementsByItem.get(row.id) || [])
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         .map((measure) => [measure.custom_label || measure.label, Number(measure.value)])),
+      measurementsDirty: false,
       imageIds: existing?.imageIds || [],
       primaryImageId: existing?.primaryImageId || null,
       remoteImages,
+      imagesDirty: false,
       externalImageUrl: cleanText(row.image_url || row.raw?.externalImageUrl),
       externalImageEdit: normalizeImageEdit(row.image_edit || row.raw?.externalImageEdit || existing?.externalImageEdit || defaultImageEdit()),
       source: existing?.source || "supabase",
@@ -2312,8 +2539,39 @@ async function pullFromSupabase(options = {}) {
     await dbPut("items", item);
   }
 
+  await dbSetMetaValue("supabaseUserId", state.session.user.id);
+  await dbSetMetaValue("lastRemotePullAt", pulledAt);
+  if (!incremental) {
+    await dbSetMetaValue("lastFullRemotePullAt", pulledAt);
+    await dbSetMetaValue("lastSignedImageUrlRefreshAt", pulledAt);
+  }
+  state.lastSyncedAt = pulledAt;
+
   await loadLocalItems();
   if (!options.silent) render();
+}
+
+async function createSignedImageUrlMap(imageRows) {
+  const paths = uniqueValues((imageRows || []).map((image) => image.storage_path));
+  const signedUrlByPath = new Map();
+  if (!paths.length) return signedUrlByPath;
+
+  const { data, error } = await state.supabase.storage
+    .from("wardrobe-images")
+    .createSignedUrls(paths, 3600);
+
+  if (error) {
+    console.warn("Signed image URLs could not be created", error);
+    return signedUrlByPath;
+  }
+
+  (data || []).forEach((entry) => {
+    if (entry?.path && entry?.signedUrl) {
+      signedUrlByPath.set(entry.path, entry.signedUrl);
+    }
+  });
+
+  return signedUrlByPath;
 }
 
 async function deleteItemFromSupabase(itemId) {
@@ -2481,129 +2739,6 @@ async function copyText(text) {
   textarea.select();
   document.execCommand("copy");
   textarea.remove();
-}
-
-function cleanText(value) {
-  return String(value ?? "").trim();
-}
-
-function normalizeColor(value) {
-  const first = cleanText(value).split(/[,，]/)[0]?.trim() || "";
-  if (!first) return "";
-  if (first === "그레이" || first === "실버") return "그레이/실버";
-  return first;
-}
-
-function normalizeItemColor(item) {
-  if (!item) return item;
-  const color = normalizeColor(item.color);
-  return color === (item.color || "") ? item : { ...item, color };
-}
-
-function clampNumber(value, min, max, fallback) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(max, Math.max(min, number));
-}
-
-function cleanNotionLabel(value) {
-  return cleanText(value).replace(/\s*\(https?:\/\/[^)]+\)\s*$/i, "").trim();
-}
-
-function parsePrice(value) {
-  const cleaned = String(value ?? "").replace(/[^\d.-]/g, "");
-  if (!cleaned) return null;
-  const number = Number(cleaned);
-  return Number.isFinite(number) ? Math.round(number) : null;
-}
-
-function parseNumber(value) {
-  const cleaned = String(value ?? "").replace(/[^\d.-]/g, "");
-  if (!cleaned) return null;
-  const number = Number(cleaned);
-  return Number.isFinite(number) ? number : null;
-}
-
-function parseKoreanDate(value) {
-  const text = cleanText(value);
-  const match = text.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/);
-  if (!match) return "";
-  const [, year, month, day] = match;
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-}
-
-function compareDate(a, b) {
-  return new Date(a || 0).getTime() - new Date(b || 0).getTime();
-}
-
-function sortByUpdated(a, b) {
-  return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
-}
-
-function uniqueValues(values) {
-  return [...new Set(values.map(cleanText).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
-}
-
-function groupBy(rows, key) {
-  const map = new Map();
-  rows.forEach((row) => {
-    const value = row[key];
-    if (!map.has(value)) map.set(value, []);
-    map.get(value).push(row);
-  });
-  return map;
-}
-
-function colorToHex(color) {
-  const value = normalizeColor(color);
-  const direct = COLOR_MAP[value];
-  if (direct) return direct;
-
-  const found = Object.keys(COLOR_MAP).find((key) => value.includes(key));
-  return found ? COLOR_MAP[found] : "#c4c7c5";
-}
-
-function formatWon(value) {
-  return new Intl.NumberFormat("ko-KR", {
-    style: "currency",
-    currency: "KRW",
-    maximumFractionDigits: 0
-  }).format(value || 0);
-}
-
-function formatNumber(value) {
-  return new Intl.NumberFormat("ko-KR").format(value || 0);
-}
-
-function csvEscape(value) {
-  const text = String(value ?? "");
-  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
-}
-
-function hashString(input) {
-  let hash = 5381;
-  for (let index = 0; index < input.length; index += 1) {
-    hash = (hash * 33) ^ input.charCodeAt(index);
-  }
-  return (hash >>> 0).toString(36);
-}
-
-function dateStamp() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function escapeAttr(value) {
-  return escapeHtml(value);
 }
 
 let toastTimer = null;

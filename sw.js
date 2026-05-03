@@ -1,4 +1,4 @@
-const CACHE_NAME = "closet-pwa-v16";
+const CACHE_NAME = "closet-pwa-v17";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -43,6 +43,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (IS_DEV_HOST) return;
   if (event.request.method !== "GET") return;
+  if (new URL(event.request.url).origin !== self.location.origin) return;
 
   event.respondWith(
     caches.match(event.request).then((cached) => {

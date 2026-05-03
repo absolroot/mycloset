@@ -8,6 +8,7 @@ build/
 
 # Generated/import scratch assets
 assets/temp/
+tmp/
 
 # Local runtime config
 config.js

@@ -138,6 +138,37 @@ create index if not exists item_measurements_definition_idx on public.item_measu
 create index if not exists item_images_item_idx on public.item_images (item_id);
 create index if not exists share_snapshots_token_idx on public.share_snapshots (token) where is_active = true;
 
+create or replace function public.touch_parent_item_updated_at()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_item_id text;
+begin
+  target_item_id := coalesce(new.item_id, old.item_id);
+
+  if target_item_id is not null then
+    update public.items
+    set updated_at = now()
+    where id = target_item_id;
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists touch_parent_item_from_measurements on public.item_measurements;
+create trigger touch_parent_item_from_measurements
+after insert or update or delete on public.item_measurements
+for each row execute function public.touch_parent_item_updated_at();
+
+drop trigger if exists touch_parent_item_from_images on public.item_images;
+create trigger touch_parent_item_from_images
+after insert or update or delete on public.item_images
+for each row execute function public.touch_parent_item_updated_at();
+
 alter table public.items enable row level security;
 alter table public.categories enable row level security;
 alter table public.colors enable row level security;
@@ -350,8 +381,22 @@ drop policy if exists "images are owned by the current user" on public.item_imag
 create policy "images are owned by the current user"
 on public.item_images
 for all
-using (auth.uid() = owner_id)
-with check (auth.uid() = owner_id);
+using (
+  auth.uid() = owner_id
+  and exists (
+    select 1 from public.items
+    where items.id = item_images.item_id
+      and items.user_id = auth.uid()
+  )
+)
+with check (
+  auth.uid() = owner_id
+  and exists (
+    select 1 from public.items
+    where items.id = item_images.item_id
+      and items.user_id = auth.uid()
+  )
+);
 
 drop policy if exists "share snapshots can be managed by owners" on public.share_snapshots;
 create policy "share snapshots can be managed by owners"

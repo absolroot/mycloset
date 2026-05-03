@@ -23,11 +23,16 @@ const COLOR_MAP: Record<string, string> = {
   베이지: "#d8c4a3",
   네이비: "#243b64",
   블루: "#1a73e8",
+  "블루/네이비": "linear-gradient(135deg, #1a73e8 0 50%, #243b64 50% 100%)",
   "그레이/실버": "#c4c7c5",
   그린: "#188038",
+  올리브: "#7d8460",
+  "올리브/그린": "linear-gradient(135deg, #7d8460 0 50%, #188038 50% 100%)",
   카키: "#7d8460",
   레드: "#c5221f",
   와인: "#7b1f32",
+  퍼플: "#6f42c1",
+  "와인/퍼플": "linear-gradient(135deg, #7b1f32 0 50%, #6f42c1 50% 100%)",
   핑크: "#f4a6b8",
   옐로우: "#fbbc04",
   오렌지: "#f29900",
@@ -45,7 +50,9 @@ type PrimaryImage = {
   edit: ImageEdit
   externalUrl: boolean
   localId: string
+  remoteId?: string
   remoteUrl: string
+  storagePath?: string
 }
 
 type ClosetItem = {
@@ -115,14 +122,18 @@ type ClosetBridge = {
   getChildCategoryOptions: (parentCategory: string) => string[]
   getAutocompleteOptions: (field?: AutocompleteField) => string[] | Partial<Record<AutocompleteField, string[]>>
   getColorOptions: () => string[]
+  getFilterSnapshot?: () => unknown
   getImageUrl: (imageId: string) => Promise<string>
   getMeasurementFieldsForItem: (item: Partial<Omit<ClosetItem, "measurements">> & { measurements?: Record<string, unknown> }) => MeasurementField[]
   getParentCategoryOptions: () => string[]
   isShoeCategory: (item: Partial<ClosetItem>) => boolean
   removeSelectedImage: () => Promise<unknown>
+  resetFilters?: () => void
   saveImageEdit: (edit: ImageEdit) => Promise<unknown>
   saveSelectedItem: (item: DetailForm & { measurements: Record<string, string> }) => Promise<unknown>
+  setFilters?: (nextPartialFilters: unknown) => void
   shareSelectedItem: () => Promise<unknown> | void
+  subscribeFilters?: (listener: (snapshot: unknown) => void) => () => void
   uploadImageFile: (file: File) => Promise<unknown>
 }
 
@@ -233,6 +244,10 @@ function getBridgeAutocompleteOptions(field: AutocompleteField) {
 }
 
 function colorToHex(color: string) {
+  const raw = String(color || "").trim()
+  const rawDirect = COLOR_MAP[raw]
+  if (rawDirect) return rawDirect
+
   const value = normalizeColorName(color)
   const direct = COLOR_MAP[value]
   if (direct) return direct
@@ -386,7 +401,7 @@ export function ClosetDetailDialog() {
   }, [payload])
 
   const parentOptions = payload?.parentCategoryOptions || []
-  const CORE_PARENT_CATEGORIES = ["상의", "하의", "아우터", "신발", "가방", "악세사리"]
+  const CORE_PARENT_CATEGORIES = ["아우터", "상의", "하의", "신발", "가방", "악세사리"]
   const allParentCategories = [...CORE_PARENT_CATEGORIES, ...parentOptions.filter((o) => !CORE_PARENT_CATEGORIES.includes(o))]
 
   const baseColorOptions = cleanColorOptions([...(payload?.colorOptions || []), ...(window.closetBridge?.getColorOptions?.() || [])])
@@ -575,7 +590,7 @@ export function ClosetDetailDialog() {
                           <SlidersHorizontal className="size-5" />
                         </Button>
                       ) : null}
-                      {primaryImage?.localId || primaryImage?.externalUrl ? (
+                      {primaryImage?.localId || primaryImage?.remoteId || primaryImage?.externalUrl ? (
                         <Button aria-label="사진 삭제" className="icon-button" type="button" variant="ghost" onClick={() => window.closetBridge?.removeSelectedImage()}>
                           <Trash2 className="size-5" />
                         </Button>
