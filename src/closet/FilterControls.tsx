@@ -5,26 +5,48 @@ import { Input } from "@/components/ui/input"
 import { colorToHex, SORT_OPTIONS, type FilterKey, type FilterOption, type FilterSnapshot } from "./filterTypes"
 import { getFilterBridge, setBridgeFilters, toggleFilterValue } from "./filterBridge"
 
-export function TopCategoryNav({ snapshot }: { snapshot: FilterSnapshot }) {
+export function TopCategoryNav({
+  snapshot,
+  activePage,
+  setActivePage,
+}: {
+  snapshot: FilterSnapshot
+  activePage: "closet" | "analysis"
+  setActivePage: (page: "closet" | "analysis") => void
+}) {
   return (
     <nav className="desktop-parent-category-nav" aria-label="상위 카테고리">
       <button
-        className={snapshot.filters.parentCategory === "all" ? "active" : ""}
+        className={activePage === "closet" && snapshot.filters.parentCategory === "all" ? "active" : ""}
         type="button"
-        onClick={() => setBridgeFilters({ parentCategory: "all", childCategory: "all" })}
+        onClick={() => {
+          setActivePage("closet")
+          setBridgeFilters({ parentCategory: "all", childCategory: "all" })
+        }}
       >
         전체
       </button>
       {snapshot.options.parentCategories.map((category) => (
         <button
           key={category}
-          className={snapshot.filters.parentCategory === category ? "active" : ""}
+          className={activePage === "closet" && snapshot.filters.parentCategory === category ? "active" : ""}
           type="button"
-          onClick={() => setBridgeFilters({ parentCategory: category, childCategory: "all" })}
+          onClick={() => {
+            setActivePage("closet")
+            setBridgeFilters({ parentCategory: category, childCategory: "all" })
+          }}
         >
           {category}
         </button>
       ))}
+      <div className="nav-separator" aria-hidden="true" />
+      <button
+        className={activePage === "analysis" ? "active" : ""}
+        type="button"
+        onClick={() => setActivePage("analysis")}
+      >
+        분석
+      </button>
     </nav>
   )
 }
@@ -127,10 +149,24 @@ export function OptionList({
       {values.map((option) => (
         <button key={option.id} className={selected.includes(option.id) ? "active" : ""} type="button" onClick={() => onToggle(option.id)}>
           <span className="checkmark" aria-hidden="true" />
-          <span>{option.label}</span>
+          <span className="option-label">
+            <span>{option.label}</span>
+            {typeof option.count === "number" ? <span className="option-count">({option.count})</span> : null}
+          </span>
         </button>
       ))}
     </div>
+  )
+}
+
+export function RatingOptionList({ snapshot }: { snapshot: FilterSnapshot }) {
+  return (
+    <OptionList
+      className="rating-option-list"
+      values={snapshot.options.rating}
+      selected={snapshot.filters.ratings}
+      onToggle={(value) => toggleFilterValue("rating", value, snapshot)}
+    />
   )
 }
 
@@ -161,9 +197,9 @@ export function BrandOptionList({ snapshot }: { snapshot: FilterSnapshot }) {
   const brands = useMemo(
     () =>
       snapshot.options.brands
-        .map((brand) => ({ id: brand, label: brand }))
+        .map((brand) => ({ id: brand, label: brand, count: snapshot.options.brandCounts?.[brand] ?? 0 }))
         .filter((brand) => !query || brand.label.toLocaleLowerCase("ko-KR").includes(query)),
-    [query, snapshot.options.brands]
+    [query, snapshot.options.brandCounts, snapshot.options.brands]
   )
 
   if (snapshot.loading) {
@@ -174,7 +210,7 @@ export function BrandOptionList({ snapshot }: { snapshot: FilterSnapshot }) {
     <div className="brand-filter-panel">
       <label className="brand-filter-search">
         <Search className="size-4" />
-        <Input value={brandQuery} type="search" placeholder="브랜드 검색" onChange={(event) => setBrandQuery(event.target.value)} />
+        <Input className="brand-filter-input" value={brandQuery} type="search" placeholder="브랜드 검색" onChange={(event) => setBrandQuery(event.target.value)} />
       </label>
       <div className="brand-filter-meta">
         <span>{brands.length}개 브랜드</span>
@@ -207,6 +243,7 @@ function BrandFilterLoading() {
 
 export function SheetFilterPanel({ tab, snapshot }: { tab: FilterKey; snapshot: FilterSnapshot }) {
   if (tab === "colors") return <ColorOptionGrid snapshot={snapshot} compact />
+  if (tab === "rating") return <RatingOptionList snapshot={snapshot} />
   if (tab === "priceRanges") {
     return (
       <OptionList
@@ -249,7 +286,7 @@ export function LegacyFilterBridges() {
       <select id="categoryFilter" tabIndex={-1} />
       <select id="brandFilter" tabIndex={-1} />
       <select id="colorFilter" tabIndex={-1} />
-      <select id="sortFilter" tabIndex={-1} defaultValue="updated">
+      <select id="sortFilter" tabIndex={-1} defaultValue="category">
         {SORT_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

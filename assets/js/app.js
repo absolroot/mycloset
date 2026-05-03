@@ -5,6 +5,7 @@ const DB_NAME = "closet-pwa";
 const DB_VERSION = 1;
 const FULL_PULL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const SIGNED_IMAGE_URL_MAX_AGE_MS = 45 * 60 * 1000;
+const SYNC_CATEGORY_ROWS = false;
 const MEASURE_FIELDS = [
   "총장",
   "어깨",
@@ -76,7 +77,7 @@ const CATEGORY_ICONS = {
   악세사리: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>`,
 };
 
-const HIDDEN_FILTER_COLOR_OPTIONS = new Set(["블루", "와인"]);
+const HIDDEN_FILTER_COLOR_OPTIONS = new Set(["블루", "네이비", "카키", "와인"]);
 const DEFAULT_COLOR_OPTIONS = window.closetFormatUtils.DEFAULT_COLOR_OPTIONS;
 const {
   cleanText,
@@ -114,14 +115,17 @@ const state = {
     colors: [],
     owned: [],
     priceRanges: [],
-    sort: "updated"
+    ratings: [],
+    sort: "category"
   },
   selectedId: null,
+  draftItem: null,
   view: "grid",
   imageUrls: new Map(),
   supabase: null,
   session: null,
   supabaseReady: false,
+  ratingColumnAvailable: true,
   syncing: false,
   categoryCache: new Map(),
   colorCache: new Map(),
@@ -131,7 +135,8 @@ const state = {
   syncTimer: null,
   lastSyncError: null,
   lastSyncedAt: null,
-  authPrompted: false
+  authPrompted: false,
+  lastDetailSignature: ""
 };
 
 const refs = {};
@@ -235,6 +240,7 @@ function cacheRefs() {
   refs.csvFileInput = document.querySelector("#csvFileInput");
   refs.authDialog = document.querySelector("#authDialog");
   refs.authForm = document.querySelector("#authForm");
+  refs.logoutButton = document.querySelector("#logoutButton");
   refs.toast = document.querySelector("#toast");
 }
 
@@ -253,11 +259,13 @@ function exposeReactBridge() {
     isShoeCategory,
     removeSelectedImage,
     resetFilters,
-    saveImageEdit: saveImageEditFromOptions,
-    saveSelectedItem: saveSelectedItemFromData,
+	    saveImageEdit: saveImageEditFromOptions,
+	    saveSelectedItemRating,
+	    saveSelectedItem: saveSelectedItemFromData,
     shareSelectedItem,
     setFilters,
     subscribeFilters,
+    getAnalysisItems: () => state.items.map(item => ({...item})),
     uploadImageFile: uploadSelectedImageFile
   };
 }
@@ -290,7 +298,7 @@ function bindEvents() {
   });
 
   refs.csvFileInput?.addEventListener("change", handleCsvFile);
-  refs.authForm.addEventListener("submit", async (event) => {
+  refs.authForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     await requestGoogleLogin();
   });
@@ -398,6 +406,9 @@ function handleDocumentClick(event) {
     case "new-item":
       createNewItem();
       break;
+    case "logout":
+      requestLogout();
+      break;
     case "close-detail":
       closeDetail();
       break;
@@ -413,6 +424,9 @@ function handleDocumentClick(event) {
       break;
     case "export-json":
       exportJson();
+      break;
+    case "export-zip":
+      exportZipBackup();
       break;
     case "upload-image":
       document.querySelector("#imageInput")?.click();
@@ -547,6 +561,19 @@ function serializePendingSync() {
   };
 }
 
+function normalizeRating(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const rating = Number(value);
+  return Number.isInteger(rating) && rating >= 1 && rating <= 5 ? rating : null;
+}
+
+function normalizeItemData(item) {
+  const normalized = normalizeItemColor(item);
+  if (!normalized) return normalized;
+  const rating = normalizeRating(normalized.rating);
+  return normalized.rating === rating ? normalized : { ...normalized, rating };
+}
+
 function schedulePendingSyncPersist() {
   persistPendingSync().catch((error) => console.warn("Pending sync state could not be saved", error));
 }
@@ -561,8 +588,8 @@ async function loadLocalItems() {
   const normalizedItems = [];
   const normalizedIds = [];
 
-  for (const item of items) {
-    const normalized = normalizeItemColor(item);
+	for (const item of items) {
+	    const normalized = normalizeItemData(item);
     if (normalized !== item) {
       await dbPut("items", normalized);
       normalizedIds.push(normalized.id);
@@ -631,9 +658,10 @@ function csvToItems(text) {
 async function upsertItems(items) {
   for (const item of items) {
     const existing = await dbGet("items", item.id);
-    await dbPut("items", {
-      ...existing,
-      ...item,
+	    await dbPut("items", {
+	      ...existing,
+	      ...item,
+	      rating: item.rating ?? existing?.rating ?? null,
       imageIds: existing?.imageIds || [],
       primaryImageId: existing?.primaryImageId || null,
       remoteImages: existing?.remoteImages || [],
@@ -676,7 +704,8 @@ function csvRowToItem(row, index) {
     retailPrice: parsePrice(row["정가"]),
     purchasePrice: parsePrice(row["구매가"]),
     purchaseDate,
-    owned: String(row["보유"] || "").toLowerCase() === "yes",
+	    owned: String(row["보유"] || "").toLowerCase() === "yes",
+	    rating: normalizeRating(row["평점"] || row.rating || row.Rating),
     measurements,
     measurementsDirty: Object.keys(measurements).length > 0,
     imageIds: [],
@@ -782,25 +811,62 @@ function renderItemList() {
 function renderItemCard(item) {
   const primaryImage = getPrimaryImage(item);
   const active = item.id === state.selectedId ? " active" : "";
+  const archived = item.owned ? "" : " is-archived";
   const colorStyle = `--dot:${colorToHex(item.color)}`;
-  const price = item.purchasePrice ? formatWon(item.purchasePrice) : "가격 없음";
   const title = item.name || "이름 없는 제품";
   const meta = [item.brand, item.sizeLabel, item.category].filter(Boolean).join(" · ");
 
   return `
-    <button class="item-tile${active}" data-action="select-item" data-id="${escapeAttr(item.id)}" type="button">
+    <button class="item-tile${active}${archived}" data-action="select-item" data-id="${escapeAttr(item.id)}" type="button">
       ${renderImageSlot(item, primaryImage)}
       <div class="item-title">
         <h3>${escapeHtml(title)}</h3>
         <p>${escapeHtml(meta || "정보 없음")}</p>
         <div class="chip-row">
-          ${item.color ? `<span class="chip"><span class="color-dot" style="${escapeAttr(colorStyle)}"></span>${escapeHtml(item.color)}</span>` : ""}
-          ${item.parentCategory ? `<span class="chip">${escapeHtml(item.parentCategory)}</span>` : ""}
-        </div>
+	          ${item.color ? `<span class="chip"><span class="color-dot" style="${escapeAttr(colorStyle)}"></span>${escapeHtml(item.color)}</span>` : ""}
+	          ${item.parentCategory ? `<span class="chip">${escapeHtml(item.parentCategory)}</span>` : ""}
+	          ${renderRatingChip(item.rating)}
+	        </div>
       </div>
-      <div class="price-line">${escapeHtml(price)}</div>
+      ${renderPriceLine(item)}
     </button>
   `;
+}
+
+function renderRatingChip(value) {
+  const rating = normalizeRating(value);
+  if (!rating) return "";
+  return `<span class="chip rating-chip" aria-label="평점 ${rating}점"><span aria-hidden="true">★</span>${rating}</span>`;
+}
+
+function hasPurchasePrice(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "" && Number.isFinite(Number(value));
+}
+
+function formatPurchasePriceLabel(value) {
+  return hasPurchasePrice(value) ? formatWonSuffix(Number(value)) : "가격 없음";
+}
+
+function formatWonSuffix(value) {
+  return `${Number(value).toLocaleString("ko-KR")}원`;
+}
+
+function renderPriceLine(item) {
+  const hasRetail = hasPurchasePrice(item.retailPrice);
+  const hasPurchase = hasPurchasePrice(item.purchasePrice);
+  const retailPrice = Number(item.retailPrice);
+  const purchasePrice = Number(item.purchasePrice);
+
+  if (hasRetail && hasPurchase && retailPrice !== purchasePrice) {
+    return `
+      <div class="price-line price-line-stacked">
+        <span class="price-retail">${escapeHtml(formatWonSuffix(retailPrice))}</span>
+        <span class="price-purchase">${escapeHtml(formatWonSuffix(purchasePrice))}</span>
+      </div>
+    `;
+  }
+
+  return `<div class="price-line">${escapeHtml(formatPurchasePriceLabel(item.purchasePrice))}</div>`;
 }
 
 function renderImageSlot(item, primaryImage) {
@@ -876,14 +942,22 @@ function renderDetail() {
     refs.detailPanel.classList.remove("open");
     refs.detailPanel.hidden = true;
     document.body.classList.remove("modal-open");
-    emitDetailChange(null);
+    if (state.lastDetailSignature) {
+      state.lastDetailSignature = "";
+      emitDetailChange(null);
+    }
     return;
   }
 
   refs.detailPanel.hidden = false;
   refs.detailPanel.classList.add("open");
   document.body.classList.add("modal-open");
-  emitDetailChange(buildDetailPayload(item));
+  const payload = buildDetailPayload(item);
+  const signature = detailPayloadSignature(payload);
+  if (signature !== state.lastDetailSignature) {
+    state.lastDetailSignature = signature;
+    emitDetailChange(payload);
+  }
 }
 
 function buildDetailPayload(item) {
@@ -901,6 +975,28 @@ function buildDetailPayload(item) {
 
 function emitDetailChange(payload) {
   window.dispatchEvent(new CustomEvent("closet:detail-change", { detail: payload }));
+}
+
+function detailPayloadSignature(payload) {
+  if (!payload?.item) return "";
+  const item = payload.item;
+  const primary = payload.primaryImage || {};
+  return JSON.stringify({
+    item,
+    primaryImage: {
+      editable: primary.editable,
+      edit: primary.edit,
+      externalUrl: primary.externalUrl,
+      localId: primary.localId,
+      remoteId: primary.remoteId,
+      remoteUrl: primary.remoteUrl,
+      storagePath: primary.storagePath
+    },
+    childCategoryOptions: payload.childCategoryOptions,
+    parentCategoryOptions: payload.parentCategoryOptions,
+    colorOptions: payload.colorOptions,
+    measurementFields: payload.measurementFields
+  });
 }
 
 function clonePlainItem(item) {
@@ -922,9 +1018,7 @@ function parentCategoryGridHtml(label, name, value, options) {
   const coreCategories = ["상의", "하의", "아우터", "신발", "가방", "악세사리"];
   
   const extraCategories = options.filter(opt => opt && !coreCategories.includes(opt));
-  const allCategories = [...coreCategories, ...extraCategories];
-
-  const isCustom = selectedValue && !allCategories.includes(selectedValue);
+  const allCategories = [...new Set([...coreCategories, ...extraCategories, selectedValue].filter(Boolean))];
 
   const gridHtml = allCategories.map(cat => {
     const icon = CATEGORY_ICONS[cat] || CATEGORY_ICONS["악세사리"];
@@ -937,25 +1031,13 @@ function parentCategoryGridHtml(label, name, value, options) {
     `;
   }).join("");
 
-  const customActive = isCustom ? "active" : "";
-  const customIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
-  
-  const customBtn = `
-    <button class="category-grid-btn ${customActive}" data-category-value="__custom__" type="button">
-      <div class="icon">${customIcon}</div>
-      <span class="label">직접 입력</span>
-    </button>
-  `;
-
   return `
     <div class="field category-field wide" data-category-field="parent">
       <span>${escapeHtml(label)}<span class="required-mark">*</span></span>
-      <input type="hidden" name="${escapeAttr(name)}" value="${escapeAttr(isCustom ? "__custom__" : selectedValue)}">
+      <input type="hidden" name="${escapeAttr(name)}" value="${escapeAttr(selectedValue)}">
       <div class="category-grid">
         ${gridHtml}
-        ${customBtn}
       </div>
-      <input class="category-custom-input" name="${escapeAttr(name)}Custom" value="${escapeAttr(isCustom ? selectedValue : "")}" placeholder="새 상위 카테고리 이름" ${isCustom ? "" : "hidden"}>
     </div>
   `;
 }
@@ -1123,11 +1205,13 @@ function getFilterSnapshot() {
 }
 
 function setFilters(nextPartialFilters = {}) {
-  state.filters = window.closetFilterUtils.applyFilterPatch(state.filters, nextPartialFilters, {
+  const nextFilters = window.closetFilterUtils.applyFilterPatch(state.filters, nextPartialFilters, {
     cleanText,
     normalizeColor,
     getChildCategoryOptions
   });
+  if (sameFilterState(state.filters, nextFilters)) return;
+  state.filters = nextFilters;
   render();
 }
 
@@ -1147,6 +1231,10 @@ function emitFilterChange() {
   const snapshot = getFilterSnapshot();
   window.dispatchEvent(new CustomEvent("closet:filters-change", { detail: snapshot }));
   filterSubscribers.forEach((listener) => listener(snapshot));
+}
+
+function sameFilterState(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function rememberColorOption(color) {
@@ -1252,12 +1340,14 @@ function getVisibleItems() {
 }
 
 function selectItem(id) {
+  if (state.draftItem?.id !== id) state.draftItem = null;
   state.selectedId = id;
   renderItemList();
   renderDetail();
 }
 
 function closeDetail() {
+  if (state.draftItem?.id === state.selectedId) state.draftItem = null;
   state.selectedId = null;
   renderItemList();
   renderDetail();
@@ -1281,6 +1371,7 @@ async function createNewItem() {
     purchasePrice: null,
     purchaseDate: "",
     owned: true,
+    rating: null,
     measurements: {},
     measurementsDirty: false,
     imageIds: [],
@@ -1295,11 +1386,9 @@ async function createNewItem() {
     updatedAt: now
   };
 
-  await saveItem(item);
-  state.items.unshift(item);
+  state.draftItem = item;
   state.selectedId = item.id;
   render();
-  queueAutoSyncItem(item.id);
 }
 
 async function saveSelectedItemFromForm(form) {
@@ -1332,9 +1421,10 @@ async function saveSelectedItemFromForm(form) {
     shoeSize,
     retailPrice: parsePrice(formData.get("retailPrice")),
     purchasePrice: parsePrice(formData.get("purchasePrice")),
-    purchaseDate: cleanText(formData.get("purchaseDate")),
-    owned: formData.get("owned") === "on",
-    measurements,
+	    purchaseDate: cleanText(formData.get("purchaseDate")),
+	    owned: formData.get("owned") === "on",
+	    rating: normalizeRating(formData.get("rating")),
+	    measurements,
     measurementsDirty: item.measurementsDirty || !sameMeasurements(item.measurements, measurements),
     updatedAt: new Date().toISOString()
   };
@@ -1347,7 +1437,7 @@ async function saveSelectedItemFromForm(form) {
   queueAutoSyncItem(updated.id);
 }
 
-async function saveSelectedItemFromData(data) {
+async function saveSelectedItemFromData(data, options = {}) {
   if (!requireAuthenticatedMutation()) return { ok: false };
   const item = getSelectedItem();
   if (!item) return { ok: false };
@@ -1375,9 +1465,10 @@ async function saveSelectedItemFromData(data) {
     shoeSize,
     retailPrice: parsePrice(data.retailPrice),
     purchasePrice: parsePrice(data.purchasePrice),
-    purchaseDate: cleanText(data.purchaseDate),
-    owned: Boolean(data.owned),
-    measurements: sanitizeMeasurementData(data.measurements),
+	    purchaseDate: cleanText(data.purchaseDate),
+	    owned: Boolean(data.owned),
+	    rating: normalizeRating(data.rating),
+	    measurements: sanitizeMeasurementData(data.measurements),
     updatedAt: new Date().toISOString()
   };
   updated.measurementsDirty = item.measurementsDirty || !sameMeasurements(item.measurements, updated.measurements);
@@ -1386,8 +1477,34 @@ async function saveSelectedItemFromData(data) {
   rememberColorOption(updated.color);
   replaceLocalItem(updated);
   render();
-  showToast("저장했습니다.");
+  if (!options.silent) showToast("저장했습니다.");
   queueAutoSyncItem(updated.id);
+  return { ok: true, item: clonePlainItem(updated) };
+}
+
+async function saveSelectedItemRating(value) {
+  if (!requireAuthenticatedMutation()) return { ok: false };
+  const item = getSelectedItem();
+  if (!item) return { ok: false };
+
+  const updated = {
+    ...item,
+    rating: normalizeRating(value),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (isDraftItem(item)) {
+    state.draftItem = updated;
+    render();
+    return { ok: true, item: clonePlainItem(updated) };
+  }
+
+  await saveItem(updated);
+  replaceLocalItem(updated);
+  render();
+  queueAutoSyncItem(updated.id);
+  await persistPendingSync();
+  await syncQueuedChanges({ silent: true });
   return { ok: true, item: clonePlainItem(updated) };
 }
 
@@ -1409,11 +1526,12 @@ function sameMeasurements(a = {}, b = {}) {
 }
 
 async function saveItem(item) {
-  await dbPut("items", normalizeItemColor(item));
+  await dbPut("items", normalizeItemData(item));
 }
 
 function replaceLocalItem(item) {
-  item = normalizeItemColor(item);
+  item = normalizeItemData(item);
+  if (state.draftItem?.id === item.id) state.draftItem = null;
   const index = state.items.findIndex((candidate) => candidate.id === item.id);
   if (index >= 0) state.items[index] = item;
   else state.items.unshift(item);
@@ -1424,19 +1542,17 @@ async function deleteSelectedItem() {
   const item = getSelectedItem();
   if (!item) return;
 
+  if (isDraftItem(item)) {
+    state.draftItem = null;
+    state.selectedId = null;
+    render();
+    return;
+  }
+
   const confirmed = window.confirm(`"${item.name}" 제품을 삭제할까요?`);
   if (!confirmed) return;
 
-  for (const imageId of item.imageIds || []) {
-    const image = await dbGet("images", imageId);
-    queueAutoDeleteImage(imageId, image?.storagePath || "");
-    await dbDelete("images", imageId);
-    revokeImageUrl(imageId);
-  }
-
-  for (const remote of item.remoteImages || []) {
-    queueAutoDeleteImage(remote.id, remote.storagePath || "");
-  }
+  await queueDeleteItemImages(item);
 
   await dbDelete("items", item.id);
   state.items = state.items.filter((candidate) => candidate.id !== item.id);
@@ -1461,18 +1577,22 @@ async function handleImageFile(event) {
   }
 }
 
-async function uploadSelectedImageFile(file) {
+async function uploadSelectedImageFile(file, itemData) {
   if (!requireAuthenticatedMutation()) return { ok: false };
-  const item = getSelectedItem();
+  let item = getSelectedItem();
   if (!file || !item) return { ok: false };
+  item = await ensureSelectedItemSavedForImage(itemData);
+  if (!item) return { ok: false };
 
   const image = await compressImage(file, item.id);
   await dbPut("images", image);
+  await queueDeleteItemImages(item, [image.id]);
 
   const updated = {
     ...item,
-    imageIds: [image.id, ...(item.imageIds || []).filter((id) => id !== image.id)],
+    imageIds: [image.id],
     primaryImageId: image.id,
+    remoteImages: [],
     imagesDirty: true,
     externalImageUrl: "",
     externalImageEdit: defaultImageEdit(),
@@ -1509,27 +1629,46 @@ async function addImageFromUrl() {
   return addImageFromUrlValue(url);
 }
 
-async function addImageFromUrlValue(value) {
+async function addImageFromUrlValue(value, itemData) {
   if (!requireAuthenticatedMutation()) return { ok: false };
-  const item = getSelectedItem();
+  let item = getSelectedItem();
   const url = normalizeImageUrl(value);
-  if (!item) return;
+  if (!item) return { ok: false };
   if (!url) {
     showToast("올바른 이미지 URL을 입력해 주세요.");
-    return;
+    return { ok: false };
   }
+  item = await ensureSelectedItemSavedForImage(itemData);
+  if (!item) return { ok: false };
 
   await attachExternalImageUrl(item, url);
   return { ok: true };
 }
 
+async function ensureSelectedItemSavedForImage(itemData) {
+  let item = getSelectedItem();
+  if (!item) return null;
+  if (!isDraftItem(item)) return item;
+
+  if (!itemData) {
+    showToast("제품 정보를 먼저 저장한 뒤 이미지를 추가해 주세요.");
+    return null;
+  }
+
+  const result = await saveSelectedItemFromData(itemData, { silent: true });
+  if (!result?.ok) return null;
+  return getSelectedItem() || result.item || null;
+}
+
 async function attachImageToItem(item, image, message) {
   await dbPut("images", image);
+  await queueDeleteItemImages(item, [image.id]);
 
   const updated = {
     ...item,
-    imageIds: [image.id, ...(item.imageIds || []).filter((id) => id !== image.id)],
+    imageIds: [image.id],
     primaryImageId: image.id,
+    remoteImages: [],
     imagesDirty: true,
     externalImageUrl: "",
     externalImageEdit: defaultImageEdit(),
@@ -1550,9 +1689,14 @@ async function attachImageToItem(item, image, message) {
 }
 
 async function attachExternalImageUrl(item, url) {
+  await queueDeleteItemImages(item);
+
   const updated = {
     ...item,
+    imageIds: [],
     primaryImageId: null,
+    remoteImages: [],
+    imagesDirty: true,
     externalImageUrl: url,
     externalImageEdit: defaultImageEdit(),
     raw: {
@@ -1619,6 +1763,10 @@ async function saveImageEditFromOptions(options) {
   if (!requireAuthenticatedMutation()) return { ok: false };
   const item = getSelectedItem();
   if (!item) return { ok: false };
+  if (isDraftItem(item)) {
+    showToast("제품 정보를 먼저 저장한 뒤 이미지 편집을 저장해 주세요.");
+    return { ok: false };
+  }
   const editOptions = normalizeImageEdit(options);
 
   try {
@@ -1703,68 +1851,35 @@ async function removeSelectedImage() {
   if (!requireAuthenticatedMutation()) return;
   const item = getSelectedItem();
   if (!item) return;
+  if (isDraftItem(item)) return;
   const primary = getPrimaryImage(item);
 
-  if (!item.primaryImageId && item.externalImageUrl) {
-    const updated = {
-      ...item,
-      primaryImageId: item.imageIds?.[0] || null,
-      externalImageUrl: "",
-      externalImageEdit: defaultImageEdit(),
-      raw: {
-        ...(item.raw || {}),
-        externalImageUrl: null,
-        externalImageEdit: null
-      },
-      updatedAt: new Date().toISOString()
-    };
+  const hasImage = Boolean(item.externalImageUrl || item.primaryImageId || (item.imageIds || []).length || primary.remoteId || (item.remoteImages || []).length);
+  if (!hasImage) return;
 
-    await saveItem(updated);
-    replaceLocalItem(updated);
-    render();
-    showToast("사진이 삭제됐습니다.");
-    queueAutoSyncItem(updated.id);
-    return;
-  }
+  await queueDeleteItemImages(item);
 
-  if (!item.primaryImageId && primary.remoteId) {
-    queueAutoDeleteImage(primary.remoteId, primary.storagePath || "");
-    const updated = {
-      ...item,
-      remoteImages: (item.remoteImages || []).filter((remote) => remote.id !== primary.remoteId),
-      updatedAt: new Date().toISOString()
-    };
-
-    await saveItem(updated);
-    replaceLocalItem(updated);
-    render();
-    showToast("사진을 삭제했습니다.");
-    return;
-  }
-
-  if (!item.primaryImageId) return;
-
-  const imageId = item.primaryImageId;
-  const image = await dbGet("images", imageId);
-  queueAutoDeleteImage(imageId, image?.storagePath || "");
-  await dbDelete("images", imageId);
-  revokeImageUrl(imageId);
-
-  const remaining = (item.imageIds || []).filter((id) => id !== imageId);
-  const updated = {
+  const clearedItem = {
     ...item,
-    imageIds: remaining,
-    primaryImageId: remaining[0] || null,
-    remoteImages: (item.remoteImages || []).filter((remote) => remote.id !== imageId),
+    imageIds: [],
+    primaryImageId: null,
+    remoteImages: [],
     imagesDirty: true,
+    externalImageUrl: "",
+    externalImageEdit: defaultImageEdit(),
+    raw: {
+      ...(item.raw || {}),
+      externalImageUrl: null,
+      externalImageEdit: null
+    },
     updatedAt: new Date().toISOString()
   };
 
-  await saveItem(updated);
-  replaceLocalItem(updated);
+  await saveItem(clearedItem);
+  replaceLocalItem(clearedItem);
   render();
   showToast("사진을 삭제했습니다.");
-  queueAutoSyncItem(updated.id);
+  queueAutoSyncItem(clearedItem.id);
 }
 
 async function hydrateImages() {
@@ -1806,7 +1921,12 @@ function revokeImageUrl(imageId) {
 }
 
 function getSelectedItem() {
+  if (state.draftItem?.id === state.selectedId) return state.draftItem;
   return state.items.find((item) => item.id === state.selectedId);
+}
+
+function isDraftItem(item) {
+  return Boolean(item && state.draftItem?.id === item.id);
 }
 
 function getPrimaryImage(item) {
@@ -1857,6 +1977,284 @@ function exportJson() {
   window.closetCsvUtils.downloadFile(`closet-backup-${window.closetCsvUtils.dateStamp()}.json`, JSON.stringify(payload, null, 2), "application/json");
 }
 
+async function exportZipBackup() {
+  try {
+    showToast("이미지 포함 백업을 준비하고 있습니다.");
+
+    const imageBackup = await collectBackupImageFiles();
+    const payload = {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      items: state.items.map(sanitizeItemForExport),
+      images: imageBackup.images,
+      skippedImages: imageBackup.skippedImages
+    };
+    const zipBlob = await createZipBlob([
+      {
+        name: "backup.json",
+        blob: new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
+      },
+      ...imageBackup.files
+    ]);
+
+    downloadBlob(`closet-backup-${window.closetCsvUtils.dateStamp()}.zip`, zipBlob);
+    const skippedCount = imageBackup.skippedImages.length;
+    showToast(skippedCount ? `ZIP 백업을 내보냈습니다. 이미지 ${skippedCount}개는 포함하지 못했습니다.` : "ZIP 백업을 내보냈습니다.");
+  } catch (error) {
+    console.error(error);
+    showToast("ZIP 백업을 만들지 못했습니다.");
+  }
+}
+
+async function collectBackupImageFiles() {
+  const files = [];
+  const images = [];
+  const skippedImages = [];
+  const seen = new Set();
+
+  for (const item of state.items) {
+    const localImageIds = uniqueValues([item.primaryImageId, ...(item.imageIds || [])]).filter(Boolean);
+    for (const imageId of localImageIds) {
+      if (seen.has(imageId)) continue;
+
+      try {
+        const image = await dbGet("images", imageId);
+        if (!image?.blob) {
+          skippedImages.push({ itemId: item.id, imageId, source: "local", reason: "missing-local-blob" });
+          continue;
+        }
+
+        const mime = image.mime || image.blob.type || "application/octet-stream";
+        const filePath = backupImagePath(item.id, imageId, mime);
+        seen.add(imageId);
+        files.push({ name: filePath, blob: image.blob });
+        images.push({
+          itemId: item.id,
+          imageId,
+          file: filePath,
+          source: "local",
+          mime,
+          width: image.width || null,
+          height: image.height || null,
+          storagePath: image.storagePath || "",
+          isPrimary: imageId === item.primaryImageId
+        });
+      } catch (error) {
+        console.warn("Local image backup failed", error);
+        skippedImages.push({ itemId: item.id, imageId, source: "local", reason: "read-failed" });
+      }
+    }
+
+    for (const remoteImage of item.remoteImages || []) {
+      const imageId = remoteImage.id || remoteImage.storagePath || "";
+      if (!imageId || seen.has(imageId)) continue;
+
+      const url = await getRemoteBackupImageUrl(remoteImage);
+      if (!url) {
+        skippedImages.push({ itemId: item.id, imageId, source: "remote", reason: "missing-url" });
+        continue;
+      }
+
+      try {
+        const blob = await fetchBackupImageBlob(url);
+        const mime = blob.type || "application/octet-stream";
+        const filePath = backupImagePath(item.id, imageId, mime);
+        seen.add(imageId);
+        files.push({ name: filePath, blob });
+        images.push({
+          itemId: item.id,
+          imageId,
+          file: filePath,
+          source: "remote",
+          mime,
+          width: remoteImage.width || null,
+          height: remoteImage.height || null,
+          storagePath: remoteImage.storagePath || "",
+          isPrimary: Boolean(remoteImage.isPrimary)
+        });
+      } catch (error) {
+        console.warn("Remote image backup failed", error);
+        skippedImages.push({ itemId: item.id, imageId, source: "remote", reason: "fetch-failed" });
+      }
+    }
+
+    const externalUrl = cleanText(item.externalImageUrl);
+    if (externalUrl) {
+      const imageId = `external-${hashString(externalUrl)}`;
+      if (seen.has(imageId)) continue;
+
+      try {
+        const blob = await fetchBackupImageBlob(externalUrl);
+        const mime = blob.type || "application/octet-stream";
+        const filePath = backupImagePath(item.id, imageId, mime);
+        seen.add(imageId);
+        files.push({ name: filePath, blob });
+        images.push({
+          itemId: item.id,
+          imageId,
+          file: filePath,
+          source: "external-url",
+          mime,
+          width: null,
+          height: null,
+          externalUrl,
+          edit: normalizeImageEdit(item.externalImageEdit || defaultImageEdit()),
+          isPrimary: !item.primaryImageId
+        });
+      } catch (error) {
+        console.warn("External image backup failed", error);
+        skippedImages.push({ itemId: item.id, imageId, source: "external-url", url: externalUrl, reason: "fetch-failed" });
+      }
+    }
+  }
+
+  return { files, images, skippedImages };
+}
+
+async function fetchBackupImageBlob(url) {
+  const response = await fetch(url, { mode: "cors" });
+  if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
+  return response.blob();
+}
+
+async function getRemoteBackupImageUrl(remoteImage) {
+  if (state.supabase && remoteImage.storagePath) {
+    try {
+      const { data, error } = await state.supabase.storage
+        .from("wardrobe-images")
+        .createSignedUrl(remoteImage.storagePath, 60 * 60);
+      if (error) throw error;
+      if (data?.signedUrl) return data.signedUrl;
+    } catch (error) {
+      console.warn("Fresh signed image URL could not be created", error);
+    }
+  }
+
+  return remoteImage.signedUrl || remoteImage.publicUrl || "";
+}
+
+function backupImagePath(itemId, imageId, mime) {
+  return `images/${safeZipPathSegment(itemId)}/${safeZipPathSegment(imageId)}${extensionForMime(mime)}`;
+}
+
+function safeZipPathSegment(value) {
+  return cleanText(value)
+    .replace(/[\\/:*?"<>|\u0000-\u001F]/g, "_")
+    .replace(/^\.+$/, "_")
+    .slice(0, 120) || "unknown";
+}
+
+function extensionForMime(mime) {
+  const normalized = cleanText(mime).toLowerCase().split(";")[0];
+  if (normalized === "image/jpeg") return ".jpg";
+  if (normalized === "image/png") return ".png";
+  if (normalized === "image/gif") return ".gif";
+  if (normalized === "image/avif") return ".avif";
+  if (normalized === "image/svg+xml") return ".svg";
+  if (normalized === "image/webp") return ".webp";
+  return ".bin";
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function createZipBlob(files) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const data = new Uint8Array(await file.blob.arrayBuffer());
+    const nameBytes = encoder.encode(file.name.replace(/\\/g, "/"));
+    const crc = crc32(data);
+    const date = file.lastModified ? new Date(file.lastModified) : new Date();
+    const dosTime = toDosTime(date);
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(localHeader.buffer);
+
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, dosTime.time, true);
+    localView.setUint16(12, dosTime.date, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, data.byteLength, true);
+    localView.setUint32(22, data.byteLength, true);
+    localView.setUint16(26, nameBytes.length, true);
+    localHeader.set(nameBytes, 30);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, dosTime.time, true);
+    centralView.setUint16(14, dosTime.date, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, data.byteLength, true);
+    centralView.setUint32(24, data.byteLength, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+
+    parts.push(localHeader, data);
+    centralParts.push(centralHeader);
+    offset += localHeader.byteLength + data.byteLength;
+  }
+
+  const centralStart = offset;
+  const centralSize = centralParts.reduce((sum, part) => sum + part.byteLength, 0);
+  const endRecord = new Uint8Array(22);
+  const endView = new DataView(endRecord.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, centralStart, true);
+
+  return new Blob([...parts, ...centralParts, endRecord], { type: "application/zip" });
+}
+
+function toDosTime(date) {
+  const year = Math.max(1980, date.getFullYear());
+  return {
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
+    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
+  };
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < table.length; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xEDB88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[index] = value >>> 0;
+  }
+  return table;
+})();
+
+function crc32(data) {
+  let crc = 0xFFFFFFFF;
+  for (const byte of data) {
+    crc = CRC32_TABLE[(crc ^ byte) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
 function exportCsv() {
   const headers = [
     "제품명",
@@ -1868,9 +2266,10 @@ function exportCsv() {
     "신발 사이즈",
     "정가",
     "실구매가",
-    "구매일",
-    "보유",
-    "제품 URL",
+	    "구매일",
+	    "보유",
+	    "평점",
+	    "제품 URL",
     "메모",
     ...MEASURE_FIELDS
   ];
@@ -1885,9 +2284,10 @@ function exportCsv() {
     item.shoeSize,
     item.retailPrice ?? "",
     item.purchasePrice ?? "",
-    item.purchaseDate,
-    item.owned ? "Yes" : "No",
-    item.productUrl,
+	    item.purchaseDate,
+	    item.owned ? "Yes" : "No",
+	    item.rating ?? "",
+	    item.productUrl,
     item.memo,
     ...MEASURE_FIELDS.map((field) => item.measurements?.[field] ?? "")
   ]);
@@ -1933,13 +2333,17 @@ async function initSupabase() {
         return;
       }
 
+      const previousSession = state.session;
+      const sameUser = Boolean(previousSession?.user?.id && session?.user?.id === previousSession.user.id);
       state.session = session || null;
       updateSyncButton();
       if (session) {
         resetSupabaseLookupCaches();
         state.authPrompted = false;
         if (refs.authDialog?.open) refs.authDialog.close();
-        resumeAuthenticatedSession();
+        if (!sameUser || event === "USER_UPDATED") {
+          resumeAuthenticatedSession();
+        }
       } else if (shouldRequireAuth()) {
         state.items = [];
         state.selectedId = null;
@@ -1965,7 +2369,10 @@ async function initSupabase() {
 }
 
 function updateSyncButton() {
-  return;
+  if (!refs.logoutButton) return;
+
+  refs.logoutButton.hidden = !state.session;
+  refs.logoutButton.disabled = state.syncing;
 }
 
 async function handleSyncButton() {
@@ -2050,6 +2457,30 @@ function queueAutoDelete(itemId) {
   state.pendingDeleteIds.add(itemId);
   schedulePendingSyncPersist();
   scheduleAutoSync();
+}
+
+async function queueDeleteItemImages(item, keepImageIds = []) {
+  if (!item) return;
+  const keep = new Set((keepImageIds || []).filter(Boolean));
+  const remoteById = new Map((item.remoteImages || []).filter((remote) => remote?.id).map((remote) => [remote.id, remote]));
+  const queued = new Set();
+
+  for (const imageId of item.imageIds || []) {
+    if (!imageId || keep.has(imageId) || queued.has(imageId)) continue;
+    const image = await dbGet("images", imageId);
+    const remote = remoteById.get(imageId);
+    queueAutoDeleteImage(imageId, image?.storagePath || remote?.storagePath || "");
+    await dbDelete("images", imageId);
+    revokeImageUrl(imageId);
+    queued.add(imageId);
+  }
+
+  for (const remote of item.remoteImages || []) {
+    const imageId = remote?.id;
+    if (!imageId || keep.has(imageId) || queued.has(imageId)) continue;
+    queueAutoDeleteImage(imageId, remote.storagePath || "");
+    queued.add(imageId);
+  }
 }
 
 function queueAutoDeleteImage(imageId, storagePath = "") {
@@ -2142,6 +2573,28 @@ async function requestGoogleLogin() {
   }
 }
 
+async function requestLogout() {
+  if (!state.supabase || !state.session) return;
+
+  refs.logoutButton?.setAttribute("disabled", "");
+
+  try {
+    if (hasPendingSync()) {
+      await syncQueuedChanges({ silent: true });
+    }
+
+    const { error } = await state.supabase.auth.signOut();
+    if (error) {
+      showToast(error.message);
+      return;
+    }
+
+    showToast("로그아웃했습니다.");
+  } finally {
+    updateSyncButton();
+  }
+}
+
 async function syncNow(options = {}) {
   if (!state.supabase || !state.session || state.syncing) return;
 
@@ -2182,7 +2635,9 @@ async function pushItemToSupabase(item) {
   item = normalizeItemColor(item);
   await ensureMeasurementDefinitionsLoaded();
   const userId = state.session.user.id;
-  await ensureCategoryRowsForItem(item, userId);
+  if (SYNC_CATEGORY_ROWS) {
+    await ensureCategoryRowsForItem(item, userId);
+  }
   await ensureColorRowForItem(item, userId);
   const hasUploadedImage = Boolean(item.primaryImageId || (item.imageIds || []).length);
   const row = {
@@ -2200,20 +2655,33 @@ async function pushItemToSupabase(item) {
     size_label: item.sizeLabel || null,
     shoe_size: item.shoeSize || null,
     retail_price: item.retailPrice,
-    purchase_price: item.purchasePrice,
-    purchase_date: item.purchaseDate || null,
-    owned: item.owned,
-    raw: {
-      ...(item.raw || {}),
-      externalImageUrl: hasUploadedImage ? null : item.externalImageUrl || null,
-      externalImageEdit: hasUploadedImage ? null : item.externalImageEdit || null
+	    purchase_price: item.purchasePrice,
+	    purchase_date: item.purchaseDate || null,
+	    owned: item.owned,
+	    rating: normalizeRating(item.rating),
+	    raw: {
+	      ...(item.raw || {}),
+	      rating: normalizeRating(item.rating),
+	      externalImageUrl: hasUploadedImage ? null : item.externalImageUrl || null,
+	      externalImageEdit: hasUploadedImage ? null : item.externalImageEdit || null
     },
     created_at: item.createdAt || new Date().toISOString(),
     updated_at: item.updatedAt || new Date().toISOString()
   };
 
-  const { error } = await state.supabase.from("items").upsert(row);
-  if (error) throw error;
+	  const { error } = await state.supabase.from("items").upsert(row);
+	  if (error) {
+	    if (isMissingRatingColumnError(error) && "rating" in row) {
+	      state.ratingColumnAvailable = false;
+	      delete row.rating;
+	      const { error: retryError } = await state.supabase.from("items").upsert(row);
+	      if (retryError) throw retryError;
+	    } else {
+	      throw error;
+	    }
+	  } else {
+	    state.ratingColumnAvailable = true;
+	  }
 
   await pushMeasurementsToSupabase(item);
 
@@ -2369,6 +2837,10 @@ async function fetchColorRows() {
 
 function isMissingSupabaseRelationError(error) {
   return error?.code === "42P01" || error?.code === "PGRST205" || /relation .*colors.* does not exist/i.test(error?.message || "");
+}
+
+function isMissingRatingColumnError(error) {
+  return error?.code === "PGRST204" && /rating/i.test(error?.message || "");
 }
 
 function hydrateMeasurementDefinitionIds(rows) {
@@ -2542,10 +3014,11 @@ async function pullFromSupabase(options = {}) {
       sizeLabel: row.size_label || "",
       shoeSize: row.shoe_size || "",
       retailPrice: row.retail_price,
-      purchasePrice: row.purchase_price,
-      purchaseDate: row.purchase_date || "",
-      owned: row.owned,
-      measurements: Object.fromEntries((measurementsByItem.get(row.id) || [])
+	      purchasePrice: row.purchase_price,
+	      purchaseDate: row.purchase_date || "",
+	      owned: row.owned,
+	      rating: normalizeRating(row.rating ?? row.raw?.rating),
+	      measurements: Object.fromEntries((measurementsByItem.get(row.id) || [])
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         .map((measure) => [measure.custom_label || measure.label, Number(measure.value)])),
       measurementsDirty: false,
@@ -2621,6 +3094,10 @@ async function deleteImageFromSupabase(imageId, storagePath = "") {
 async function shareSelectedItem() {
   const item = getSelectedItem();
   if (!item) return;
+  if (isDraftItem(item)) {
+    showToast("제품 정보를 먼저 저장한 뒤 공유해 주세요.");
+    return;
+  }
 
   const payload = {
     title: item.name,
@@ -2701,7 +3178,7 @@ function renderSharedPayload(payload) {
           ${item.parentCategory ? `<span class="chip">${escapeHtml(item.parentCategory)}</span>` : ""}
         </div>
       </div>
-      <div class="price-line">${escapeHtml(item.purchasePrice ? formatWon(item.purchasePrice) : "가격 없음")}</div>
+      ${renderPriceLine(item)}
     </article>
   `).join("");
 }
@@ -2727,9 +3204,10 @@ function sanitizeItemForExport(item) {
     shoeSize: item.shoeSize,
     retailPrice: item.retailPrice,
     purchasePrice: item.purchasePrice,
-    purchaseDate: item.purchaseDate,
-    owned: item.owned,
-    measurements: item.measurements || {},
+	    purchaseDate: item.purchaseDate,
+	    owned: item.owned,
+	    rating: normalizeRating(item.rating),
+	    measurements: item.measurements || {},
     externalImageUrl: item.externalImageUrl || "",
     externalImageEdit: item.externalImageEdit || defaultImageEdit(),
     updatedAt: item.updatedAt

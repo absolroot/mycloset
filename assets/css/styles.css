@@ -433,6 +433,18 @@ a {
   background-size: cover;
 }
 
+.item-tile.is-archived .image-slot {
+  filter: grayscale(1) brightness(0.58) contrast(0.9);
+}
+
+.item-tile.is-archived .image-slot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.18);
+  pointer-events: none;
+}
+
 .item-grid.list .image-slot {
   width: 82px;
   height: 102px;

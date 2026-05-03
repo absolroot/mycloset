@@ -19,6 +19,7 @@ create table if not exists public.items (
   purchase_price integer,
   purchase_date date,
   owned boolean not null default true,
+  rating integer check (rating is null or rating between 1 and 5),
   raw jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -26,7 +27,17 @@ create table if not exists public.items (
 
 alter table public.items
   add column if not exists image_url text,
-  add column if not exists image_edit jsonb not null default '{}'::jsonb;
+  add column if not exists image_edit jsonb not null default '{}'::jsonb,
+  add column if not exists rating integer;
+
+alter table public.items
+  drop constraint if exists items_rating_range_check;
+
+alter table public.items
+  add constraint items_rating_range_check
+  check (rating is null or rating between 1 and 5);
+
+notify pgrst, 'reload schema';
 
 create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),
@@ -126,6 +137,7 @@ create table if not exists public.share_snapshots (
 
 create index if not exists items_user_updated_idx on public.items (user_id, updated_at desc);
 create index if not exists items_user_category_idx on public.items (user_id, parent_category, category);
+create index if not exists items_user_rating_idx on public.items (user_id, rating) where rating is not null;
 create index if not exists categories_owner_parent_idx on public.categories (owner_id, parent_id, sort_order, name);
 create index if not exists categories_system_parent_idx on public.categories (parent_id, sort_order, name) where is_system = true;
 create unique index if not exists colors_system_name_idx on public.colors (lower(name)) where is_system = true;

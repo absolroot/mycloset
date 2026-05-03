@@ -50,12 +50,13 @@ export function useFilterSnapshot() {
 }
 
 export function toggleFilterValue(key: FilterKey, value: string, snapshot: FilterSnapshot) {
-  const selected = snapshot.filters[key]
+  const selected = key === "rating" ? snapshot.filters.ratings : snapshot.filters[key]
   const nextValues = selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]
-  setBridgeFilters({ [key]: nextValues })
+  setBridgeFilters(key === "rating" ? { ratings: nextValues } : { [key]: nextValues })
 }
 
 export function getActiveCount(snapshot: FilterSnapshot, key: FilterKey) {
+  if (key === "rating") return snapshot.filters.ratings.length
   return snapshot.filters[key].length
 }
 

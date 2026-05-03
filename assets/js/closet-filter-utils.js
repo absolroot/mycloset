@@ -2,7 +2,7 @@
 
 (function exposeClosetFilterUtils() {
   const PRICE_RANGE_OPTIONS = [
-    { id: "none", label: "가격 없음" },
+    { id: "none", label: "0원" },
     { id: "under-50000", label: "5만원 이하" },
     { id: "50000-100000", label: "5만원~10만원" },
     { id: "100000-300000", label: "10만원~30만원" },
@@ -15,6 +15,15 @@
     { id: "archived", label: "정리" }
   ];
 
+  const RATING_FILTER_OPTIONS = [
+    { id: "5", label: "★★★★★" },
+    { id: "4", label: "★★★★" },
+    { id: "3", label: "★★★" },
+    { id: "2", label: "★★" },
+    { id: "1", label: "★" },
+    { id: "unrated", label: "미평점" }
+  ];
+
   const PARENT_CATEGORY_ORDER = ["아우터", "상의", "하의", "신발", "가방", "악세사리"];
 
   function sortParentCategoryOptions(values) {
@@ -25,6 +34,30 @@
       if (aIndex !== bIndex) return aIndex - bIndex;
       return a.localeCompare(b, "ko");
     });
+  }
+
+  function parentCategoryIndex(category) {
+    const index = PARENT_CATEGORY_ORDER.indexOf(category);
+    return index === -1 ? Number.POSITIVE_INFINITY : index;
+  }
+
+  function compareDefaultOrder(a, b, sortByUpdated) {
+    const ownedDiff = Number(!a.owned) - Number(!b.owned);
+    if (ownedDiff) return ownedDiff;
+
+    const parentDiff = parentCategoryIndex(a.parentCategory) - parentCategoryIndex(b.parentCategory);
+    if (parentDiff) return parentDiff;
+
+    const parentNameDiff = (a.parentCategory || "").localeCompare(b.parentCategory || "", "ko");
+    if (parentNameDiff) return parentNameDiff;
+
+    const childDiff = (a.category || "").localeCompare(b.category || "", "ko");
+    if (childDiff) return childDiff;
+
+    const nameDiff = (a.name || "").localeCompare(b.name || "", "ko");
+    if (nameDiff) return nameDiff;
+
+    return sortByUpdated(a, b);
   }
 
   function normalizeFilterArray(value, cleanText) {
@@ -47,6 +80,8 @@
     if ("brands" in next) updated.brands = normalizeFilterArray(next.brands, cleanText);
     if ("colors" in next) updated.colors = normalizeFilterArray(next.colors, cleanText).map(normalizeColor).filter(Boolean);
     if ("owned" in next) updated.owned = normalizeFilterArray(next.owned, cleanText).filter((value) => value === "owned" || value === "archived");
+    if ("ratings" in next) updated.ratings = normalizeRatingFilters(next.ratings, cleanText);
+    if ("minRating" in next) updated.ratings = minRatingToRatings(next.minRating, cleanText);
     if ("priceRanges" in next) {
       const validIds = new Set(PRICE_RANGE_OPTIONS.map((option) => option.id));
       updated.priceRanges = normalizeFilterArray(next.priceRanges, cleanText).filter((value) => validIds.has(value));
@@ -69,7 +104,9 @@
       brands: [],
       colors: [],
       owned: [],
-      priceRanges: []
+      priceRanges: [],
+      ratings: [],
+      sort: "category"
     };
   }
 
@@ -95,6 +132,7 @@
         colors: [...filters.colors],
         owned: [...filters.owned],
         priceRanges: [...filters.priceRanges],
+        ratings: [...(filters.ratings || minRatingToRatings(filters.minRating, cleanText))],
         sort: filters.sort
       },
       counts: {
@@ -107,12 +145,22 @@
         parentCategories,
         childCategories,
         brands,
+        brandCounts: countByCleanValue(items.map((item) => item.brand)),
         colors,
         owned: OWNED_FILTER_OPTIONS,
-        priceRanges: PRICE_RANGE_OPTIONS
+        priceRanges: PRICE_RANGE_OPTIONS,
+        rating: RATING_FILTER_OPTIONS
       },
       visibleCount: visibleItems.length
     };
+  }
+
+  function countByCleanValue(values) {
+    return values.reduce((counts, value) => {
+      const key = cleanText(value);
+      if (key) counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {});
   }
 
   function getVisibleItems(items, filters, helpers) {
@@ -134,10 +182,12 @@
         if (!filters.owned.includes(status)) return false;
       }
       if (filters.priceRanges.length && !filters.priceRanges.some((range) => priceMatchesRange(item.purchasePrice, range))) return false;
+      if (!ratingMatchesFilter(item.rating, filters.ratings || minRatingToRatings(filters.minRating, cleanText))) return false;
       return true;
     });
 
     return visibleItems.sort((a, b) => {
+      if (filters.sort === "category") return compareDefaultOrder(a, b, sortByUpdated);
       if (filters.sort === "purchaseDate") return compareDate(b.purchaseDate, a.purchaseDate);
       if (filters.sort === "priceDesc") return (b.purchasePrice || 0) - (a.purchasePrice || 0);
       if (filters.sort === "name") return (a.name || "").localeCompare(b.name || "", "ko");
@@ -146,9 +196,10 @@
   }
 
   function priceMatchesRange(price, range) {
+    const hasPrice = price !== null && price !== undefined && String(price).trim() !== "";
     const value = Number(price);
-    if (range === "none") return !Number.isFinite(value) || value <= 0;
-    if (!Number.isFinite(value) || value <= 0) return false;
+    if (range === "none") return !hasPrice || !Number.isFinite(value);
+    if (!hasPrice || !Number.isFinite(value) || value < 0) return false;
     if (range === "under-50000") return value <= 50000;
     if (range === "50000-100000") return value > 50000 && value <= 100000;
     if (range === "100000-300000") return value > 100000 && value <= 300000;
@@ -157,8 +208,31 @@
     return false;
   }
 
+  function normalizeRatingFilters(value, cleanText) {
+    const validIds = new Set(RATING_FILTER_OPTIONS.map((option) => option.id));
+    return normalizeFilterArray(value, cleanText).filter((item) => validIds.has(item));
+  }
+
+  function minRatingToRatings(value, cleanText) {
+    const text = cleanText(value);
+    if (!text || text === "all") return [];
+    if (text === "unrated") return ["unrated"];
+    const min = Number(text);
+    if (!Number.isInteger(min) || min < 1 || min > 5) return [];
+    return ["1", "2", "3", "4", "5"].filter((rating) => Number(rating) >= min);
+  }
+
+  function ratingMatchesFilter(rating, filters) {
+    if (!filters.length) return true;
+    const value = Number(rating);
+    const hasRating = Number.isInteger(value) && value >= 1 && value <= 5;
+    if (!hasRating) return filters.includes("unrated");
+    return filters.includes(String(value));
+  }
+
   window.closetFilterUtils = {
     PRICE_RANGE_OPTIONS,
+    RATING_FILTER_OPTIONS,
     getFilterSnapshot,
     getVisibleItems,
     applyFilterPatch,

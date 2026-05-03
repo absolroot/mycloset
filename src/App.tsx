@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState } from "react"
-import { ChevronDown, Database, Download, Grid2X2, List, Plus, Search, Upload, X } from "lucide-react"
+import { lazy, Suspense, useState, useEffect } from "react"
+import { Archive, ChevronDown, Database, Download, Grid2X2, Home, List, LogOut, Menu, PieChart, Plus, Search, Upload, User, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -19,6 +19,7 @@ import {
   FilterSection,
   LegacyFilterBridges,
   OptionList,
+  RatingOptionList,
   RailActions,
   SheetFilterPanel,
   TopCategoryNav,
@@ -30,14 +31,33 @@ const ClosetDetailDialog = lazy(() =>
   import("./ClosetDetailDialog").then((module) => ({ default: module.ClosetDetailDialog }))
 )
 
+const AnalysisPage = lazy(() => import("./AnalysisPage"))
+
 function App() {
   useLegacyClosetRuntime()
 
   const snapshot = useFilterSnapshot()
+  const [activePage, setActivePage] = useState<"closet" | "analysis">(() => {
+    return window.location.pathname === "/analysis" ? "analysis" : "closet"
+  })
   const [categoryOpen, setCategoryOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [activeSheetTab, setActiveSheetTab] = useState<FilterKey>("colors")
   const isLoading = snapshot.loading
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActivePage(window.location.pathname === "/analysis" ? "analysis" : "closet")
+    }
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
+
+  const navigateTo = (page: "closet" | "analysis") => {
+    if (activePage === page) return
+    setActivePage(page)
+    window.history.pushState({}, "", page === "analysis" ? "/analysis" : "/")
+  }
 
   const selectedParentLabel = snapshot.filters.parentCategory === "all" ? "전체" : snapshot.filters.parentCategory
   const selectedChildLabel = snapshot.filters.childCategory === "all" ? "전체" : snapshot.filters.childCategory
@@ -66,8 +86,32 @@ function App() {
             </Badge>
             <h1>옷장</h1>
           </div>
-          <TopCategoryNav snapshot={snapshot} />
+          <TopCategoryNav snapshot={snapshot} activePage={activePage} setActivePage={navigateTo} />
+          
+          <label className="topbar-search desktop-only-search">
+            <Search className="size-4" />
+            <Input
+              id="desktopSearchInput"
+              type="search"
+              value={snapshot.filters.query}
+              placeholder="제품명, 브랜드, 색상"
+              onChange={(event) => setBridgeFilters({ query: event.target.value })}
+            />
+          </label>
+
           <div className="topbar-actions">
+            <Button
+              id="logoutButton"
+              className="topbar-icon-action auth-logout-button"
+              data-action="logout"
+              type="button"
+              variant="outline"
+              aria-label="로그아웃"
+              title="로그아웃"
+              hidden
+            >
+              <LogOut className="size-4" />
+            </Button>
             <Popover>
               <PopoverTrigger asChild>
                 <Button className="topbar-icon-action" type="button" variant="outline" aria-label="가져오기">
@@ -96,6 +140,10 @@ function App() {
                   <Database className="size-4" />
                   JSON 백업
                 </button>
+                <button data-action="export-zip" type="button">
+                  <Archive className="size-4" />
+                  이미지 포함 ZIP 백업
+                </button>
               </PopoverContent>
             </Popover>
             <Button className="button primary" data-action="new-item" type="button" aria-label="새 제품">
@@ -105,7 +153,7 @@ function App() {
           </div>
         </header>
 
-        <main className="workspace">
+        <main className="workspace" style={{ display: activePage === "closet" ? undefined : "none" }}>
           <aside className="filters" aria-label="카테고리와 필터">
             <div className="desktop-filter-rail">
               <div className="desktop-filter-scroll">
@@ -134,6 +182,9 @@ function App() {
                 </FilterSection>
                 <FilterSection title="브랜드" className="brand-filter-section" scroll>
                   <SheetFilterPanel tab="brands" snapshot={snapshot} />
+                </FilterSection>
+                <FilterSection title="평점" className="rating-filter-section">
+                  <RatingOptionList snapshot={snapshot} />
                 </FilterSection>
               </div>
               <RailActions />
@@ -185,7 +236,7 @@ function App() {
 
           <section className={`content ${isLoading ? "is-loading" : ""}`} aria-label="옷장 목록">
             <div className="content-toolbar">
-              <label className="content-search">
+              <label className="content-search mobile-only-search">
                 <Search className="size-4" />
                 <Input
                   id="searchInput"
@@ -203,7 +254,7 @@ function App() {
                 <SelectTrigger className="toolbar-select" aria-label="정렬">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="shadcn-select-content" position="popper">
+                <SelectContent className="shadcn-select-content toolbar-select-content" position="popper">
                   {SORT_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
@@ -239,6 +290,12 @@ function App() {
           <aside id="detailPanel" className="detail-panel-bridge" hidden />
         </main>
       </div>
+
+      {activePage === "analysis" && (
+        <Suspense fallback={<div className="content-loading" style={{ height: "100vh" }}><span className="loading-spinner" /></div>}>
+          <AnalysisPage />
+        </Suspense>
+      )}
 
       <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
         <DialogContent className="filter-sheet" showCloseButton={false}>
@@ -295,6 +352,45 @@ function App() {
       </dialog>
 
       <div id="toast" className="toast" role="status" aria-live="polite" />
+
+      <nav className="mobile-bottom-nav">
+        <button className={`nav-item ${activePage === "closet" ? "active" : ""}`} type="button" onClick={() => {
+          navigateTo("closet");
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}>
+          <Home className="size-6" />
+          <span>홈</span>
+        </button>
+        <button className="nav-item" type="button" onClick={() => {
+          navigateTo("closet");
+          setCategoryOpen(!categoryOpen);
+        }}>
+          <Menu className="size-6" />
+          <span>카테고리</span>
+        </button>
+        <button className="nav-item" type="button" onClick={() => {
+          navigateTo("closet");
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          setTimeout(() => document.getElementById("searchInput")?.focus(), 100);
+        }}>
+          <Search className="size-6" />
+          <span>검색</span>
+        </button>
+        <button className={`nav-item ${activePage === "analysis" ? "active" : ""}`} type="button" onClick={() => {
+          navigateTo("analysis");
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}>
+          <PieChart className="size-6" />
+          <span>분석</span>
+        </button>
+        <button className="nav-item" type="button" onClick={() => {
+          const dialog = document.getElementById("authDialog") as HTMLDialogElement;
+          dialog?.showModal();
+        }}>
+          <User className="size-6" />
+          <span>마이</span>
+        </button>
+      </nav>
     </>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react"
-import { CalendarIcon, ImagePlus, LinkIcon, Plus, Save, Share2, SlidersHorizontal, Trash2, X } from "lucide-react"
+import { CalendarIcon, ChevronLeft, ImagePlus, LinkIcon, Pencil, Plus, Save, Share2, SlidersHorizontal, Star, Trash2, X, XCircle } from "lucide-react"
 import { format } from "date-fns"
 
 import { Button } from "@/components/ui/button"
@@ -13,31 +13,10 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { Textarea } from "@/components/ui/textarea"
+import { colorToHex, normalizeColorName } from "@/closet/colorUtils"
 
 const NONE_VALUE = "__closet_none__"
 const CUSTOM_VALUE = "__custom__"
-const COLOR_MAP: Record<string, string> = {
-  블랙: "#202124",
-  화이트: "#ffffff",
-  브라운: "#795548",
-  베이지: "#d8c4a3",
-  네이비: "#243b64",
-  블루: "#1a73e8",
-  "블루/네이비": "linear-gradient(135deg, #1a73e8 0 50%, #243b64 50% 100%)",
-  "그레이/실버": "#c4c7c5",
-  그린: "#188038",
-  올리브: "#7d8460",
-  "올리브/그린": "linear-gradient(135deg, #7d8460 0 50%, #188038 50% 100%)",
-  카키: "#7d8460",
-  레드: "#c5221f",
-  와인: "#7b1f32",
-  퍼플: "#6f42c1",
-  "와인/퍼플": "linear-gradient(135deg, #7b1f32 0 50%, #6f42c1 50% 100%)",
-  핑크: "#f4a6b8",
-  옐로우: "#fbbc04",
-  오렌지: "#f29900",
-  골드: "#c6a15b",
-}
 
 type ImageEdit = {
   offsetX: number
@@ -70,6 +49,7 @@ type ClosetItem = {
   productUrl: string
   purchaseDate: string
   purchasePrice: number | null
+  rating: number | null
   retailPrice: number | null
   shoeSize: string
   sizeLabel: string
@@ -108,15 +88,18 @@ type DetailForm = {
   productUrl: string
   purchaseDate: string
   purchasePrice: string
+  rating: number | null
   retailPrice: string
   shoeSize: string
   sizeLabel: string
 }
 
 type AutocompleteField = "brand" | "sizeLabel" | "shoeSize"
+type DetailMode = "view" | "edit"
+type DetailSavePayload = DetailForm & { measurements: Record<string, string> }
 
 type ClosetBridge = {
-  addImageFromUrl: (url: string) => Promise<unknown>
+  addImageFromUrl: (url: string, item?: DetailSavePayload) => Promise<unknown>
   closeDetail: () => void
   deleteSelectedItem: () => Promise<unknown>
   getChildCategoryOptions: (parentCategory: string) => string[]
@@ -130,11 +113,12 @@ type ClosetBridge = {
   removeSelectedImage: () => Promise<unknown>
   resetFilters?: () => void
   saveImageEdit: (edit: ImageEdit) => Promise<unknown>
-  saveSelectedItem: (item: DetailForm & { measurements: Record<string, string> }) => Promise<unknown>
+  saveSelectedItemRating: (rating: number | null) => Promise<unknown>
+  saveSelectedItem: (item: DetailSavePayload) => Promise<unknown>
   setFilters?: (nextPartialFilters: unknown) => void
   shareSelectedItem: () => Promise<unknown> | void
   subscribeFilters?: (listener: (snapshot: unknown) => void) => () => void
-  uploadImageFile: (file: File) => Promise<unknown>
+  uploadImageFile: (file: File, item?: DetailSavePayload) => Promise<unknown>
 }
 
 declare global {
@@ -155,6 +139,7 @@ function itemToForm(item: ClosetItem): DetailForm {
     productUrl: item.productUrl || "",
     purchaseDate: item.purchaseDate || "",
     purchasePrice: priceToInput(item.purchasePrice),
+    rating: normalizeRating(item.rating),
     retailPrice: priceToInput(item.retailPrice),
     shoeSize: item.shoeSize || "",
     sizeLabel: item.sizeLabel || "",
@@ -166,6 +151,12 @@ function priceToInput(value: number | null) {
   return Number(value).toLocaleString("ko-KR")
 }
 
+function normalizeRating(value: unknown) {
+  if (value === null || value === undefined || value === "") return null
+  const rating = Number(value)
+  return Number.isInteger(rating) && rating >= 1 && rating <= 5 ? rating : null
+}
+
 function dateFromString(value: string) {
   if (!value) return undefined
   const date = new Date(`${value}T00:00:00`)
@@ -174,6 +165,13 @@ function dateFromString(value: string) {
 
 function dateToString(date: Date) {
   return format(date, "yyyy-MM-dd")
+}
+
+function normalizeDateInput(value: string) {
+  const text = value.trim()
+  const digits = text.replace(/[^\d]/g, "")
+  if (digits.length === 8) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+  return text
 }
 
 function buildMeasurementRows(fields: MeasurementField[], measurements: Record<string, unknown> = {}): MeasurementRow[] {
@@ -211,6 +209,37 @@ function imageStyle(edit: ImageEdit) {
   } as React.CSSProperties
 }
 
+function bridgeResultOk(result: unknown) {
+  return !result || (typeof result === "object" && "ok" in result ? Boolean((result as { ok?: boolean }).ok) : true)
+}
+
+function shouldOpenInEdit(item: ClosetItem) {
+  return item.name === "새 제품" && !item.parentCategory && !item.category && !item.brand
+}
+
+function displayValue(value?: string | number | null) {
+  const text = String(value ?? "").trim()
+  return text || "미입력"
+}
+
+function hasValue(value?: string | number | null) {
+  return String(value ?? "").trim().length > 0
+}
+
+function formatPriceValue(value: string) {
+  const digits = value.replace(/[^\d]/g, "")
+  if (!digits) return "미입력"
+  return `${Number(digits).toLocaleString("ko-KR")}원`
+}
+
+function categoryDisplay(parentCategory: string, category: string) {
+  return [parentCategory, category].filter(Boolean).join(" / ") || "미입력"
+}
+
+function itemMetaSummary(form: DetailForm) {
+  return [form.brand, form.color, form.sizeLabel || form.shoeSize].filter(Boolean).join(" · ")
+}
+
 function uniqueMeasurementLabel(rows: MeasurementRow[]) {
   const labels = new Set(rows.map((row) => row.label))
   let label = "추가 실측"
@@ -228,10 +257,8 @@ function cleanOptions(options: Array<string | undefined>) {
   return [...new Set(options.map((option) => (option || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"))
 }
 
-function normalizeColorName(value?: string) {
-  const first = String(value || "").split(/[,，]/)[0]?.trim() || ""
-  if (first === "그레이" || first === "실버") return "그레이/실버"
-  return first
+function uniqueOrderedOptions(options: Array<string | undefined>) {
+  return [...new Set(options.map((option) => (option || "").trim()).filter(Boolean))]
 }
 
 function cleanColorOptions(options: Array<string | undefined>) {
@@ -241,18 +268,6 @@ function cleanColorOptions(options: Array<string | undefined>) {
 function getBridgeAutocompleteOptions(field: AutocompleteField) {
   const options = window.closetBridge?.getAutocompleteOptions?.(field)
   return Array.isArray(options) ? options : []
-}
-
-function colorToHex(color: string) {
-  const raw = String(color || "").trim()
-  const rawDirect = COLOR_MAP[raw]
-  if (rawDirect) return rawDirect
-
-  const value = normalizeColorName(color)
-  const direct = COLOR_MAP[value]
-  if (direct) return direct
-  const found = Object.keys(COLOR_MAP).find((key) => value.includes(key))
-  return found ? COLOR_MAP[found] : "#c4c7c5"
 }
 
 function CategoryIcon({ category }: { category: string }) {
@@ -322,12 +337,12 @@ function CategoryIcon({ category }: { category: string }) {
 
 export function ClosetDetailDialog() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const detailItemIdRef = useRef<string | null>(null)
+  const modeRef = useRef<DetailMode>("view")
   const [payload, setPayload] = useState<DetailPayload | null>(null)
   const [form, setForm] = useState<DetailForm | null>(null)
   const [measurementRows, setMeasurementRows] = useState<MeasurementRow[]>([])
   const [childOptions, setChildOptions] = useState<string[]>([])
-  const [customParentMode, setCustomParentMode] = useState(false)
-  const [customParent, setCustomParent] = useState("")
   const [customCategory, setCustomCategory] = useState("")
   const [customColor, setCustomColor] = useState("")
   const [customColorMode, setCustomColorMode] = useState(false)
@@ -337,30 +352,41 @@ export function ClosetDetailDialog() {
   const [imageEditOpen, setImageEditOpen] = useState(false)
   const [imageEdit, setImageEdit] = useState<ImageEdit>(normalizeEdit())
   const [calendarOpen, setCalendarOpen] = useState(false)
+  const [mode, setMode] = useState<DetailMode>("view")
+  const [ratingSaving, setRatingSaving] = useState(false)
+
+  useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
 
   useEffect(() => {
     const handleDetailChange = (event: Event) => {
       const detail = (event as CustomEvent<DetailPayload | null>).detail
+      const previousItemId = detailItemIdRef.current
+      const nextItemId = detail?.item.id || null
+      const shouldPreserveDraft = Boolean(detail && previousItemId === nextItemId && modeRef.current === "edit")
+      detailItemIdRef.current = nextItemId
       setPayload(detail)
-      setForm(detail ? itemToForm(detail.item) : null)
-      setMeasurementRows(detail ? buildMeasurementRows(detail.measurementFields, detail.item.measurements) : [])
-      setChildOptions(detail?.childCategoryOptions || [])
-      setCustomParentMode(false)
-      setCustomParent("")
-      setCustomCategory("")
-      setCustomColor("")
-      setCustomColorMode(false)
-      setImageUrlInput("")
-      setImageUrlOpen(false)
-      setImageEditOpen(false)
+      if (!shouldPreserveDraft) {
+        setForm(detail ? itemToForm(detail.item) : null)
+        setMeasurementRows(detail ? buildMeasurementRows(detail.measurementFields, detail.item.measurements) : [])
+        setChildOptions(detail?.childCategoryOptions || [])
+        setCustomCategory("")
+        setCustomColor("")
+        setCustomColorMode(false)
+        setImageUrlInput("")
+        setImageUrlOpen(false)
+        setImageEditOpen(false)
+        setRatingSaving(false)
+      }
       setImageEdit(normalizeEdit(detail?.primaryImage.edit))
+      if (!detail) {
+        setMode("view")
+      } else if (previousItemId !== nextItemId) {
+        setMode(shouldOpenInEdit(detail.item) ? "edit" : "view")
+      }
 
       if (detail) {
-        if (detail.item.parentCategory && !detail.parentCategoryOptions.includes(detail.item.parentCategory)) {
-          setCustomParentMode(true)
-          setCustomParent(detail.item.parentCategory)
-        }
-
         if (detail.item.category && !detail.childCategoryOptions.includes(detail.item.category)) {
           setCustomCategory(detail.item.category)
         }
@@ -402,7 +428,7 @@ export function ClosetDetailDialog() {
 
   const parentOptions = payload?.parentCategoryOptions || []
   const CORE_PARENT_CATEGORIES = ["아우터", "상의", "하의", "신발", "가방", "악세사리"]
-  const allParentCategories = [...CORE_PARENT_CATEGORIES, ...parentOptions.filter((o) => !CORE_PARENT_CATEGORIES.includes(o))]
+  const allParentCategories = uniqueOrderedOptions([...CORE_PARENT_CATEGORIES, ...parentOptions, form?.parentCategory])
 
   const baseColorOptions = cleanColorOptions([...(payload?.colorOptions || []), ...(window.closetBridge?.getColorOptions?.() || [])])
   const colorOptions = cleanColorOptions([...baseColorOptions, !customColorMode ? form?.color : undefined])
@@ -417,6 +443,10 @@ export function ClosetDetailDialog() {
   )
   const primaryImage = payload?.primaryImage
   const hasImage = Boolean(imageSrc)
+  const isEditing = mode === "edit"
+  const filledMeasurements = measurementRows.filter((row) => row.label.trim() && row.value.trim())
+  const hasBasicReadInfo =
+    hasValue(form?.parentCategory) || hasValue(form?.category) || hasValue(form?.brand) || hasValue(form?.color) || hasValue(form?.sizeLabel) || (showShoeSize && hasValue(form?.shoeSize))
 
   const updateField = <Key extends keyof DetailForm>(key: Key, value: DetailForm[Key]) => {
     setForm((current) => (current ? { ...current, [key]: value } : current))
@@ -436,19 +466,7 @@ export function ClosetDetailDialog() {
 
   const handleParentChange = (value: string) => {
     if (!form) return
-
-    if (value === CUSTOM_VALUE) {
-      setCustomParentMode(true)
-      const nextParent = customParent || ""
-      setForm({ ...form, category: "", parentCategory: nextParent, shoeSize: "" })
-      setChildOptions(window.closetBridge?.getChildCategoryOptions(nextParent) || [])
-      syncMeasurementTemplate(nextParent, "")
-      return
-    }
-
-    setCustomParentMode(false)
     const nextParent = value === NONE_VALUE ? "" : value
-    setCustomParent("")
     setCustomCategory("")
     setForm({ ...form, category: "", parentCategory: nextParent, shoeSize: "" })
     setChildOptions(window.closetBridge?.getChildCategoryOptions(nextParent) || [])
@@ -469,14 +487,6 @@ export function ClosetDetailDialog() {
     setCustomCategory("")
     setForm({ ...form, category: nextCategory })
     syncMeasurementTemplate(form.parentCategory, nextCategory)
-  }
-
-  const handleCustomParentChange = (value: string) => {
-    if (!form) return
-    setCustomParent(value)
-    setForm({ ...form, category: "", parentCategory: value, shoeSize: "" })
-    setChildOptions(window.closetBridge?.getChildCategoryOptions(value) || [])
-    syncMeasurementTemplate(value, "")
   }
 
   const handleCustomCategoryChange = (value: string) => {
@@ -510,16 +520,45 @@ export function ClosetDetailDialog() {
 
   const handleSave = async () => {
     if (!form) return
-    await window.closetBridge?.saveSelectedItem({
+    const result = await window.closetBridge?.saveSelectedItem({
       ...form,
       measurements: rowsToMeasurements(measurementRows),
     })
+    if (bridgeResultOk(result)) {
+      setMode("view")
+    }
+  }
+
+  const handleRatingChange = async (rating: number | null) => {
+    if (!form || ratingSaving) return
+
+    const previousRating = form.rating
+    setForm({ ...form, rating })
+    setRatingSaving(true)
+
+    const result = await window.closetBridge?.saveSelectedItemRating(rating)
+    if (!bridgeResultOk(result)) {
+      setForm((current) => (current ? { ...current, rating: previousRating } : current))
+    }
+    setRatingSaving(false)
+  }
+
+  const currentSavePayload = (): DetailSavePayload | undefined => {
+    if (!form) return undefined
+    return {
+      ...form,
+      measurements: rowsToMeasurements(measurementRows),
+    }
   }
 
   const handleUpload = async (file?: File) => {
     if (!file) return
-    await window.closetBridge?.uploadImageFile(file)
+    await window.closetBridge?.uploadImageFile(file, currentSavePayload())
     if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const openFilePicker = () => {
+    fileInputRef.current?.click()
   }
 
   const handlePaste = async (event: React.ClipboardEvent<HTMLFormElement>) => {
@@ -534,9 +573,11 @@ export function ClosetDetailDialog() {
   }
 
   const handleImageUrlSave = async () => {
-    await window.closetBridge?.addImageFromUrl(imageUrlInput)
-    setImageUrlInput("")
-    setImageUrlOpen(false)
+    const result = await window.closetBridge?.addImageFromUrl(imageUrlInput, currentSavePayload())
+    if (bridgeResultOk(result)) {
+      setImageUrlInput("")
+      setImageUrlOpen(false)
+    }
   }
 
   const handleImageEditSave = async () => {
@@ -548,6 +589,7 @@ export function ClosetDetailDialog() {
     <Dialog open={Boolean(payload)} onOpenChange={(open) => !open && window.closetBridge?.closeDetail()}>
       <DialogContent className="detail-form detail-dialog-content" showCloseButton={false}>
         {payload && form ? (
+          isEditing ? (
           <form
             className="detail-form-contents"
             onPaste={handlePaste}
@@ -557,31 +599,34 @@ export function ClosetDetailDialog() {
             }}
           >
             <div className="detail-header">
+              <Button aria-label="뒤로가기" className="icon-button mobile-back-button" type="button" variant="ghost" onClick={() => window.closetBridge?.closeDetail()}>
+                <ChevronLeft className="size-6" />
+              </Button>
               <div className="detail-title-stack">
                 <DialogTitle asChild>
                   <h2>{form.name || "새 제품"}</h2>
                 </DialogTitle>
                 <DialogDescription className="sr-only">제품 정보와 사진, 구매 정보, 실측을 편집합니다.</DialogDescription>
               </div>
-              <Button aria-label="닫기" className="icon-button" type="button" variant="ghost" onClick={() => window.closetBridge?.closeDetail()}>
+              <Button aria-label="닫기" className="icon-button desktop-close-button" type="button" variant="ghost" onClick={() => window.closetBridge?.closeDetail()}>
                 <X className="size-5" />
               </Button>
             </div>
 
             <ScrollArea className="detail-scroll">
               <div className="detail-main">
-                <div className="detail-media">
-                  <div className={hasImage ? "detail-cover" : "detail-cover placeholder"} data-image-cover>
+	                <div className="detail-media">
+	                  <div className={hasImage ? "detail-cover" : "detail-cover placeholder"} data-image-cover>
                     {hasImage ? (
                       <img className="detail-cover-img" src={imageSrc} style={imageStyle(imageEdit)} alt="" />
                     ) : (
                       <span className="detail-cover-initial">{payload.initial}</span>
                     )}
-
-                    <div className="unified-image-toolbar">
-                      <Button aria-label="사진 업로드" className="icon-button" type="button" variant="ghost" onClick={() => fileInputRef.current?.click()}>
-                        <ImagePlus className="size-5" />
-                      </Button>
+	
+	                    <div className="unified-image-toolbar">
+	                      <Button aria-label="사진 업로드" className="icon-button" type="button" variant="ghost" onClick={openFilePicker}>
+	                        <ImagePlus className="size-5" />
+	                      </Button>
                       <Button aria-label="URL로 추가" className="icon-button" type="button" variant="ghost" onClick={() => setImageUrlOpen((open) => !open)}>
                         <LinkIcon className="size-5" />
                       </Button>
@@ -597,18 +642,16 @@ export function ClosetDetailDialog() {
                       ) : null}
                     </div>
                   </div>
-                  <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => handleUpload(event.target.files?.[0])} />
+	                  {imageUrlOpen ? (
+	                    <div className="image-url-row">
+	                      <Input value={imageUrlInput} type="url" placeholder="이미지 URL (https://...)" onChange={(event) => setImageUrlInput(event.target.value)} />
+	                      <Button className="button secondary" type="button" variant="outline" onClick={handleImageUrlSave}>
+	                        확인
+	                      </Button>
+	                    </div>
+	                  ) : null}
 
-                  {imageUrlOpen ? (
-                    <div className="image-url-row">
-                      <Input value={imageUrlInput} type="url" placeholder="이미지 URL (https://...)" onChange={(event) => setImageUrlInput(event.target.value)} />
-                      <Button className="button secondary" type="button" variant="outline" onClick={handleImageUrlSave}>
-                        확인
-                      </Button>
-                    </div>
-                  ) : null}
-
-                  {imageEditOpen && primaryImage?.editable ? (
+	                  {imageEditOpen && primaryImage?.editable ? (
                     <div className="image-editor">
                       <ImageSlider label="크기" max={2.5} min={0.5} step={0.01} value={imageEdit.scale} onChange={(scale) => setImageEdit((edit) => ({ ...edit, scale }))} />
                       <ImageSlider label="가로 위치" max={50} min={-50} step={1} value={imageEdit.offsetX} onChange={(offsetX) => setImageEdit((edit) => ({ ...edit, offsetX }))} />
@@ -639,7 +682,11 @@ export function ClosetDetailDialog() {
 	                        <span>보유 중</span>
 	                      </label>
 	                      <TextField label="제품명" required value={form.name} className="wide" onChange={(value) => updateField("name", value)} />
-	                      <div className="field wide">
+		                      <div className="field wide rating-field">
+		                        <span>내 평점</span>
+		                        <RatingControl value={form.rating} disabled={ratingSaving} onChange={handleRatingChange} />
+		                      </div>
+		                      <div className="field wide">
                         <span>
                           상위 카테고리<span className="required-mark">*</span>
                         </span>
@@ -648,7 +695,7 @@ export function ClosetDetailDialog() {
                             <button
                               key={opt}
                               type="button"
-                              className={`category-grid-btn ${!customParentMode && form.parentCategory === opt ? "active" : ""}`}
+                              className={`category-grid-btn ${form.parentCategory === opt ? "active" : ""}`}
                               onClick={() => handleParentChange(opt)}
                             >
                               <div className="icon">
@@ -657,22 +704,9 @@ export function ClosetDetailDialog() {
                               <span className="label">{opt}</span>
                             </button>
                           ))}
-                          <button
-                            type="button"
-                            className={`category-grid-btn ${customParentMode ? "active" : ""}`}
-                            onClick={() => handleParentChange(CUSTOM_VALUE)}
-                          >
-                            <div className="icon">
-                              <CategoryIcon category="__custom__" />
-                            </div>
-                            <span className="label">+ 추가</span>
-                          </button>
-                        </div>
-                      </div>
-                      {customParentMode ? (
-                        <TextField label="새 상위 카테고리" value={customParent} className="wide" onChange={handleCustomParentChange} />
-                      ) : null}
-                      <SelectField
+	                        </div>
+	                      </div>
+	                      <SelectField
                         label="상세 카테고리"
                         value={categoryIsCustom ? CUSTOM_VALUE : form.category || NONE_VALUE}
                         options={childOptions}
@@ -708,17 +742,34 @@ export function ClosetDetailDialog() {
                       <TextField label="제품 URL" value={form.productUrl} className="wide" type="url" onChange={(value) => updateField("productUrl", value)} />
                       <TextField label="정가" value={form.retailPrice} inputMode="numeric" onChange={(value) => updateField("retailPrice", value)} />
                       <TextField label="실구매가" value={form.purchasePrice} inputMode="numeric" onChange={(value) => updateField("purchasePrice", value)} />
-                      <Label className="field">
-                        <span>구매일</span>
-                        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-                          <PopoverTrigger asChild>
-                            <Button className="date-trigger" type="button" variant="outline">
-                              <CalendarIcon className="size-4" />
-                              {form.purchaseDate || "날짜 선택"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent align="start" className="calendar-popover">
-                            <Calendar
+	                      <Label className="field">
+	                        <span>구매일</span>
+	                        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                            <div className="date-control">
+                              <div className="date-text-control">
+                                <Input
+                                  className="date-text-input"
+                                  inputMode="numeric"
+                                  placeholder="YYYY-MM-DD"
+                                  value={form.purchaseDate}
+                                  onBlur={(event) => updateField("purchaseDate", normalizeDateInput(event.target.value))}
+                                  onChange={(event) => updateField("purchaseDate", event.target.value)}
+                                />
+                                <PopoverTrigger asChild>
+                                  <Button aria-label="날짜 선택" className="date-picker-button" type="button" variant="outline">
+                                    <CalendarIcon className="size-4" />
+                                  </Button>
+                                </PopoverTrigger>
+                              </div>
+                              <PopoverTrigger asChild>
+                                <Button className="date-trigger date-trigger-mobile" type="button" variant="outline">
+                                  <CalendarIcon className="size-4" />
+                                  {form.purchaseDate || "날짜 선택"}
+                                </Button>
+                              </PopoverTrigger>
+                            </div>
+	                          <PopoverContent align="start" className="calendar-popover">
+	                            <Calendar
                               captionLayout="dropdown"
                               mode="single"
                               selected={selectedDate}
@@ -807,9 +858,239 @@ export function ClosetDetailDialog() {
               </div>
             </div>
           </form>
+          ) : (
+            <div className="detail-form-contents detail-view-contents">
+              <div className="detail-header">
+                <Button aria-label="뒤로가기" className="icon-button mobile-back-button" type="button" variant="ghost" onClick={() => window.closetBridge?.closeDetail()}>
+                  <ChevronLeft className="size-6" />
+                </Button>
+                <div className="detail-title-stack detail-view-header-title">
+                  <DialogTitle asChild>
+                    <h2>{form.name || "새 제품"}</h2>
+                  </DialogTitle>
+                  <DialogDescription className="sr-only">제품 정보를 확인합니다.</DialogDescription>
+                </div>
+                <div className="topbar-actions">
+                  <Button className="button secondary" type="button" variant="outline" onClick={() => setMode("edit")}>
+                    <Pencil className="size-4" />
+                    편집
+                  </Button>
+                  <Button aria-label="닫기" className="icon-button desktop-close-button" type="button" variant="ghost" onClick={() => window.closetBridge?.closeDetail()}>
+                    <X className="size-5" />
+                  </Button>
+                </div>
+              </div>
+
+              <ScrollArea className="detail-scroll">
+                <div className="detail-main detail-view-main">
+                  <div className="detail-media">
+                    <div className={hasImage ? "detail-cover" : "detail-cover placeholder"} data-image-cover>
+                      {hasImage ? (
+                        <img className="detail-cover-img" src={imageSrc} style={imageStyle(imageEdit)} alt="" />
+                      ) : (
+                        <span className="detail-cover-initial">{payload.initial}</span>
+                      )}
+
+                      <div className="unified-image-toolbar">
+	                        <Button aria-label="사진 업로드" className="icon-button" type="button" variant="ghost" onClick={openFilePicker}>
+	                          <ImagePlus className="size-5" />
+	                        </Button>
+                        <Button aria-label="URL로 추가" className="icon-button" type="button" variant="ghost" onClick={() => setImageUrlOpen((open) => !open)}>
+                          <LinkIcon className="size-5" />
+                        </Button>
+                        {primaryImage?.editable ? (
+                          <Button aria-label="사진 편집" className="icon-button" type="button" variant="ghost" onClick={() => setImageEditOpen((open) => !open)}>
+                            <SlidersHorizontal className="size-5" />
+                          </Button>
+                        ) : null}
+                        {primaryImage?.localId || primaryImage?.remoteId || primaryImage?.externalUrl ? (
+                          <Button aria-label="사진 삭제" className="icon-button" type="button" variant="ghost" onClick={() => window.closetBridge?.removeSelectedImage()}>
+                            <Trash2 className="size-5" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+
+	                    {imageUrlOpen ? (
+                      <div className="image-url-row">
+                        <Input value={imageUrlInput} type="url" placeholder="이미지 URL (https://...)" onChange={(event) => setImageUrlInput(event.target.value)} />
+                        <Button className="button secondary" type="button" variant="outline" onClick={handleImageUrlSave}>
+                          확인
+                        </Button>
+                      </div>
+                    ) : null}
+
+	                    {imageEditOpen && primaryImage?.editable ? (
+                      <div className="image-editor">
+                        <ImageSlider label="크기" max={2.5} min={0.5} step={0.01} value={imageEdit.scale} onChange={(scale) => setImageEdit((edit) => ({ ...edit, scale }))} />
+                        <ImageSlider label="가로 위치" max={50} min={-50} step={1} value={imageEdit.offsetX} onChange={(offsetX) => setImageEdit((edit) => ({ ...edit, offsetX }))} />
+                        <ImageSlider label="세로 위치" max={50} min={-50} step={1} value={imageEdit.offsetY} onChange={(offsetY) => setImageEdit((edit) => ({ ...edit, offsetY }))} />
+                        <div className="image-editor-actions">
+                          <Button
+                            className="button secondary compact"
+                            type="button"
+                            variant="outline"
+                            onClick={() => setImageEdit(normalizeEdit(payload.primaryImage.edit))}
+                          >
+                            초기화
+                          </Button>
+                          <Button className="button primary compact" type="button" onClick={handleImageEditSave}>
+                            편집 저장
+                          </Button>
+                        </div>
+	                      </div>
+		                    ) : null}
+
+                    <div className="detail-media-summary">
+                      <div className="detail-view-tags">
+                        <span>{form.owned ? "보유 중" : "정리함"}</span>
+                        <span>{categoryDisplay(form.parentCategory, form.category)}</span>
+                      </div>
+                    </div>
+		                  </div>
+
+                  <div className="detail-view-info">
+                    <div className="detail-view-title">
+                      <h3>{form.name || "새 제품"}</h3>
+	                      {itemMetaSummary(form) ? <p>{itemMetaSummary(form)}</p> : null}
+	                      <RatingControl value={form.rating} disabled={ratingSaving} onChange={handleRatingChange} />
+                    </div>
+
+	                  <div className="detail-body detail-view-body">
+	                    {hasBasicReadInfo ? (
+	                    <section className="detail-read-section">
+	                      <h3>기본 정보</h3>
+	                      <dl className="detail-read-list">
+	                        {hasValue(form.parentCategory) ? <ViewField label="상위 카테고리">{displayValue(form.parentCategory)}</ViewField> : null}
+	                        {hasValue(form.category) ? <ViewField label="상세 카테고리">{displayValue(form.category)}</ViewField> : null}
+	                        {hasValue(form.brand) ? <ViewField label="브랜드">{displayValue(form.brand)}</ViewField> : null}
+	                        {hasValue(form.color) ? (
+	                          <ViewField label="색상">
+	                            <ReadColorValue color={form.color} />
+	                          </ViewField>
+	                        ) : null}
+	                        {hasValue(form.sizeLabel) ? <ViewField label="사이즈">{displayValue(form.sizeLabel)}</ViewField> : null}
+	                        {showShoeSize && hasValue(form.shoeSize) ? <ViewField label="신발 사이즈">{displayValue(form.shoeSize)}</ViewField> : null}
+	                      </dl>
+	                    </section>
+	                    ) : null}
+
+	                    {hasValue(form.productUrl) || hasValue(form.retailPrice) || hasValue(form.purchasePrice) || hasValue(form.purchaseDate) ? (
+	                    <section className="detail-read-section">
+	                      <h3>구매 정보</h3>
+	                      <dl className="detail-read-list">
+	                        {hasValue(form.productUrl) ? (
+	                          <ViewField label="제품 URL">
+	                            <a href={form.productUrl} target="_blank" rel="noreferrer">
+	                              링크 열기
+	                            </a>
+	                          </ViewField>
+	                        ) : null}
+	                        {hasValue(form.retailPrice) ? <ViewField label="정가">{formatPriceValue(form.retailPrice)}</ViewField> : null}
+	                        {hasValue(form.purchasePrice) ? <ViewField label="실구매가">{formatPriceValue(form.purchasePrice)}</ViewField> : null}
+	                        {hasValue(form.purchaseDate) ? <ViewField label="구매일">{displayValue(form.purchaseDate)}</ViewField> : null}
+	                      </dl>
+	                    </section>
+	                    ) : null}
+
+                    {form.memo.trim() ? (
+                      <section className="detail-read-section">
+                        <h3>메모</h3>
+                        <p className="detail-read-note">{form.memo}</p>
+                      </section>
+                    ) : null}
+
+                    {filledMeasurements.length ? (
+                      <section className="detail-read-section">
+                        <h3>실측</h3>
+                        <dl className="detail-measure-list">
+                          {filledMeasurements.map((row, index) => (
+                            <ViewField key={`${row.label}-${index}`} label={row.label}>
+                              {row.value}
+                              {row.unit ? <span className="detail-measure-unit"> {row.unit}</span> : null}
+                            </ViewField>
+                          ))}
+                        </dl>
+                      </section>
+                    ) : null}
+                  </div>
+                  </div>
+                </div>
+              </ScrollArea>
+
+              <div className="detail-actions">
+                <Button className="button danger" type="button" variant="destructive" onClick={() => window.closetBridge?.deleteSelectedItem()}>
+                  <Trash2 className="size-4" />
+                  삭제
+                </Button>
+	                <div className="topbar-actions">
+	                  <Button className="button secondary" type="button" variant="outline" onClick={() => window.closetBridge?.shareSelectedItem()}>
+	                    <Share2 className="size-4" />
+	                    공유 링크
+	                  </Button>
+	                </div>
+	              </div>
+            </div>
+          )
         ) : null}
+        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => handleUpload(event.target.files?.[0])} />
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ViewField({ children, label }: { children: React.ReactNode; label: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  )
+}
+
+function RatingControl({
+  disabled = false,
+  onChange,
+  value,
+}: {
+  disabled?: boolean
+  onChange: (rating: number | null) => void
+  value: number | null
+}) {
+  return (
+    <div className="rating-control" role="radiogroup" aria-label="내 평점">
+      {[1, 2, 3, 4, 5].map((rating) => {
+        const active = Boolean(value && rating <= value)
+        return (
+          <button
+            aria-checked={value === rating}
+            aria-label={`${rating}점`}
+            className={active ? "active" : ""}
+            disabled={disabled}
+            key={rating}
+            role="radio"
+            type="button"
+            onClick={() => onChange(rating)}
+          >
+            <Star className="size-5" fill={active ? "currentColor" : "none"} />
+          </button>
+        )
+      })}
+      {value ? (
+        <button aria-label="평점 지우기" className="rating-clear" disabled={disabled} type="button" onClick={() => onChange(null)}>
+          <XCircle className="size-4" />
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+function ReadColorValue({ color }: { color: string }) {
+  return (
+    <span className="detail-read-color">
+      <span className="color-dot" style={{ "--dot": colorToHex(color) } as React.CSSProperties} />
+      <span>{displayValue(color)}</span>
+    </span>
   )
 }
 
