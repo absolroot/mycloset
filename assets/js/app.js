@@ -1909,15 +1909,31 @@ async function initSupabase() {
     if (!createClient) {
       throw new Error("Supabase client loader is missing.");
     }
-  state.supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
-    const { data } = await state.supabase.auth.getSession();
-    state.session = data.session || null;
+
+    state.supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
     state.supabaseReady = true;
 
-    state.supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "INITIAL_SESSION") return;
+    let initialAuthSettled = false;
+    let settleInitialAuth = () => {};
+    const initialAuth = new Promise((resolve) => {
+      settleInitialAuth = resolve;
+    });
 
-      state.session = session;
+    const settleInitialSession = (session) => {
+      if (initialAuthSettled) return;
+      initialAuthSettled = true;
+      state.session = session || null;
+      updateSyncButton();
+      settleInitialAuth();
+    };
+
+    state.supabase.auth.onAuthStateChange((event, session) => {
+      if (!initialAuthSettled || event === "INITIAL_SESSION") {
+        settleInitialSession(session);
+        return;
+      }
+
+      state.session = session || null;
       updateSyncButton();
       if (session) {
         resetSupabaseLookupCaches();
@@ -1931,6 +1947,15 @@ async function initSupabase() {
         showAuthDialog({ once: true });
       }
     });
+
+    const { data } = await state.supabase.auth.getSession();
+    if (data.session) settleInitialSession(data.session);
+
+    await Promise.race([
+      initialAuth,
+      new Promise((resolve) => window.setTimeout(resolve, 1500))
+    ]);
+    if (!initialAuthSettled) settleInitialSession(null);
   } catch (error) {
     console.warn("Supabase init failed", error);
     state.supabaseReady = false;
