@@ -8,83 +8,21 @@ const DB_VERSION = 1;
 const FULL_PULL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const SIGNED_IMAGE_URL_MAX_AGE_MS = 45 * 60 * 1000;
 const SYNC_CATEGORY_ROWS = false;
-const MEASURE_FIELDS = [
-  "총장",
-  "어깨",
-  "가슴",
-  "소매",
-  "허리",
-  "허벅지",
-  "밑위",
-  "밑단",
-  "폭",
-  "높이",
-  "다리길이",
-  "둘레길이",
-  "렌즈길이",
-  "브릿지길이",
-  "챙길이"
-];
-
-const MEASUREMENT_DEFINITIONS = [
-  { key: "total_length", label: "총장", unit: "cm" },
-  { key: "shoulder", label: "어깨", unit: "cm" },
-  { key: "chest", label: "가슴", unit: "cm" },
-  { key: "sleeve", label: "소매", unit: "cm" },
-  { key: "waist", label: "허리", unit: "cm" },
-  { key: "thigh", label: "허벅지", unit: "cm" },
-  { key: "rise", label: "밑위", unit: "cm" },
-  { key: "hem", label: "밑단", unit: "cm" },
-  { key: "width", label: "폭", unit: "cm" },
-  { key: "height", label: "높이", unit: "cm" },
-  { key: "temple_length", label: "다리길이", unit: "mm" },
-  { key: "circumference", label: "둘레길이", unit: "cm" },
-  { key: "lens_width", label: "렌즈길이", unit: "mm" },
-  { key: "bridge_width", label: "브릿지길이", unit: "mm" },
-  { key: "brim_length", label: "챙길이", unit: "cm" }
-];
-
-const MEASUREMENT_BY_LABEL = new Map(MEASUREMENT_DEFINITIONS.map((definition) => [definition.label, definition]));
-const MEASUREMENT_BY_KEY = new Map(MEASUREMENT_DEFINITIONS.map((definition) => [definition.key, definition]));
-const MEASUREMENT_DB_ID_BY_KEY = new Map();
-
-const CATEGORY_MEASUREMENT_TEMPLATES = [
-  { match: ["상의", "티셔츠", "셔츠", "니트", "가디건", "집업", "스웨트셔츠", "후디", "니트베스트"], fields: ["total_length", "shoulder", "chest", "sleeve"] },
-  { match: ["아우터", "코트", "블레이저", "야상", "재킷", "바람막이", "플리스", "패딩"], fields: ["total_length", "shoulder", "chest", "sleeve"] },
-  { match: ["하의", "슬랙스", "치노", "퍼티그", "데님", "린넨", "나일론", "스웨트/코듀로이", "반바지"], fields: ["total_length", "waist", "rise", "thigh", "hem"] },
-  { match: ["신발", "스니커즈", "구두", "샌들", "부츠"], fields: ["height", "width"] },
-  { match: ["아이웨어"], fields: ["lens_width", "bridge_width", "temple_length"] },
-  { match: ["모자"], fields: ["circumference", "brim_length", "height"] },
-  { match: ["가방", "백팩", "크로스백", "토트백"], fields: ["height", "width"] },
-  { match: ["벨트"], fields: ["total_length", "width"] },
-  { match: ["머플러", "장갑", "넥타이"], fields: ["total_length", "width"] },
-  { match: ["악세사리", "시계", "팔찌", "반지", "지갑"], fields: ["width", "height"] }
-];
-
-const DEFAULT_CATEGORY_TREE = {
-  상의: ["티셔츠 (긴팔)", "티셔츠 (반팔)", "셔츠 (긴팔)", "셔츠 (반팔)", "니트", "니트베스트", "가디건", "집업", "스웨트셔츠", "후디"],
-  하의: ["슬랙스", "치노/퍼티그", "데님", "린넨/나일론", "스웨트/코듀로이", "반바지"],
-  아우터: ["코트", "블레이저", "야상", "패딩", "바람막이/플리스", "재킷"],
-  신발: ["스니커즈", "구두", "샌들", "부츠"],
-  가방: ["백팩", "크로스백", "토트백"],
-  악세사리: ["아이웨어", "모자", "벨트", "넥타이", "머플러/장갑", "시계/팔찌/반지", "지갑"]
-};
-
-const CHILD_CATEGORY_ORDER = {
-  아우터: ["코트", "블레이저", "야상", "패딩", "바람막이/플리스", "재킷"]
-};
-
-const CATEGORY_ICONS = {
-  상의: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.47a1 1 0 00.99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.47a2 2 0 00-1.34-2.23z"/></svg>`,
-  하의: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21v-8m0 8h5.5c.83 0 1.5-.67 1.5-1.5v-7M12 21H6.5c-.83 0-1.5-.67-1.5-1.5v-7M5 12.5V5a2 2 0 012-2h10a2 2 0 012 2v7.5"/></svg>`,
-  아우터: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10V4h16v6M4 10l-2 4h3v6h14v-6h3l-2-4M4 10h16M12 4v16"/></svg>`,
-  신발: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20M4 20V8a4 4 0 014-4h8a4 4 0 014 4v12M12 20v-8M8 12h8"/></svg>`,
-  가방: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0"/></svg>`,
-  악세사리: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>`,
-};
-
 const HIDDEN_FILTER_COLOR_OPTIONS = new Set(["블루", "네이비", "카키", "와인"]);
 const DEFAULT_COLOR_OPTIONS = window.closetFormatUtils.DEFAULT_COLOR_OPTIONS;
+const {
+  MEASURE_FIELDS,
+  MEASUREMENT_DEFINITIONS,
+  MEASUREMENT_BY_LABEL,
+  MEASUREMENT_BY_KEY,
+  MEASUREMENT_DB_ID_BY_KEY,
+  CATEGORY_MEASUREMENT_TEMPLATES
+} = window.closetMeasurementUtils;
+const {
+  DEFAULT_CATEGORY_TREE,
+  CHILD_CATEGORY_ORDER,
+  CATEGORY_ICONS
+} = window.closetCategoryUtils;
 const {
   cleanText,
   normalizeColor,
@@ -106,6 +44,15 @@ const {
   escapeHtml,
   escapeAttr
 } = window.closetFormatUtils;
+const {
+  backupImagePath,
+  createZipBlob,
+  decodeSharePayload,
+  downloadBlob,
+  encodeSharePayload,
+  fetchBackupImageBlob,
+  sanitizeItemForExport
+} = window.closetExportUtils;
 const filterSubscribers = new Set();
 
 const state = {
@@ -2409,12 +2356,6 @@ async function collectBackupImageFiles() {
   return { files, images, skippedImages };
 }
 
-async function fetchBackupImageBlob(url) {
-  const response = await fetch(url, { mode: "cors" });
-  if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
-  return response.blob();
-}
-
 async function getRemoteBackupImageUrl(remoteImage) {
   if (state.supabase && remoteImage.storagePath) {
     try {
@@ -2429,128 +2370,6 @@ async function getRemoteBackupImageUrl(remoteImage) {
   }
 
   return remoteImage.signedUrl || remoteImage.publicUrl || "";
-}
-
-function backupImagePath(itemId, imageId, mime) {
-  return `images/${safeZipPathSegment(itemId)}/${safeZipPathSegment(imageId)}${extensionForMime(mime)}`;
-}
-
-function safeZipPathSegment(value) {
-  return cleanText(value)
-    .replace(/[\\/:*?"<>|\u0000-\u001F]/g, "_")
-    .replace(/^\.+$/, "_")
-    .slice(0, 120) || "unknown";
-}
-
-function extensionForMime(mime) {
-  const normalized = cleanText(mime).toLowerCase().split(";")[0];
-  if (normalized === "image/jpeg") return ".jpg";
-  if (normalized === "image/png") return ".png";
-  if (normalized === "image/gif") return ".gif";
-  if (normalized === "image/avif") return ".avif";
-  if (normalized === "image/svg+xml") return ".svg";
-  if (normalized === "image/webp") return ".webp";
-  return ".bin";
-}
-
-function downloadBlob(filename, blob) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-async function createZipBlob(files) {
-  const encoder = new TextEncoder();
-  const parts = [];
-  const centralParts = [];
-  let offset = 0;
-
-  for (const file of files) {
-    const data = new Uint8Array(await file.blob.arrayBuffer());
-    const nameBytes = encoder.encode(file.name.replace(/\\/g, "/"));
-    const crc = crc32(data);
-    const date = file.lastModified ? new Date(file.lastModified) : new Date();
-    const dosTime = toDosTime(date);
-    const localHeader = new Uint8Array(30 + nameBytes.length);
-    const localView = new DataView(localHeader.buffer);
-
-    localView.setUint32(0, 0x04034b50, true);
-    localView.setUint16(4, 20, true);
-    localView.setUint16(6, 0x0800, true);
-    localView.setUint16(8, 0, true);
-    localView.setUint16(10, dosTime.time, true);
-    localView.setUint16(12, dosTime.date, true);
-    localView.setUint32(14, crc, true);
-    localView.setUint32(18, data.byteLength, true);
-    localView.setUint32(22, data.byteLength, true);
-    localView.setUint16(26, nameBytes.length, true);
-    localHeader.set(nameBytes, 30);
-
-    const centralHeader = new Uint8Array(46 + nameBytes.length);
-    const centralView = new DataView(centralHeader.buffer);
-    centralView.setUint32(0, 0x02014b50, true);
-    centralView.setUint16(4, 20, true);
-    centralView.setUint16(6, 20, true);
-    centralView.setUint16(8, 0x0800, true);
-    centralView.setUint16(10, 0, true);
-    centralView.setUint16(12, dosTime.time, true);
-    centralView.setUint16(14, dosTime.date, true);
-    centralView.setUint32(16, crc, true);
-    centralView.setUint32(20, data.byteLength, true);
-    centralView.setUint32(24, data.byteLength, true);
-    centralView.setUint16(28, nameBytes.length, true);
-    centralView.setUint32(42, offset, true);
-    centralHeader.set(nameBytes, 46);
-
-    parts.push(localHeader, data);
-    centralParts.push(centralHeader);
-    offset += localHeader.byteLength + data.byteLength;
-  }
-
-  const centralStart = offset;
-  const centralSize = centralParts.reduce((sum, part) => sum + part.byteLength, 0);
-  const endRecord = new Uint8Array(22);
-  const endView = new DataView(endRecord.buffer);
-  endView.setUint32(0, 0x06054b50, true);
-  endView.setUint16(8, files.length, true);
-  endView.setUint16(10, files.length, true);
-  endView.setUint32(12, centralSize, true);
-  endView.setUint32(16, centralStart, true);
-
-  return new Blob([...parts, ...centralParts, endRecord], { type: "application/zip" });
-}
-
-function toDosTime(date) {
-  const year = Math.max(1980, date.getFullYear());
-  return {
-    time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
-    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
-  };
-}
-
-const CRC32_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let index = 0; index < table.length; index += 1) {
-    let value = index;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = value & 1 ? 0xEDB88320 ^ (value >>> 1) : value >>> 1;
-    }
-    table[index] = value >>> 0;
-  }
-  return table;
-})();
-
-function crc32(data) {
-  let crc = 0xFFFFFFFF;
-  for (const byte of data) {
-    crc = CRC32_TABLE[(crc ^ byte) & 0xFF] ^ (crc >>> 8);
-  }
-  return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
 function exportCsv() {
@@ -3488,44 +3307,6 @@ function renderShareError(message) {
   refs.shareView.hidden = false;
   refs.shareTitle.textContent = message;
   refs.shareItems.innerHTML = "";
-}
-
-function sanitizeItemForExport(item) {
-  return {
-    id: item.id,
-    name: item.name,
-    productUrl: item.productUrl,
-    memo: item.memo,
-    parentCategory: item.parentCategory,
-    category: item.category,
-    brand: item.brand,
-    color: item.color,
-    sizeLabel: item.sizeLabel,
-    shoeSize: item.shoeSize,
-    retailPrice: item.retailPrice,
-    purchasePrice: item.purchasePrice,
-	    purchaseDate: item.purchaseDate,
-	    owned: item.owned,
-	    rating: normalizeRating(item.rating),
-	    measurements: item.measurements || {},
-    externalImageUrl: item.externalImageUrl || "",
-    externalImageEdit: item.externalImageEdit || defaultImageEdit(),
-    updatedAt: item.updatedAt
-  };
-}
-
-function encodeSharePayload(payload) {
-  const json = JSON.stringify(payload);
-  return btoa(unescape(encodeURIComponent(json)));
-}
-
-function decodeSharePayload(encoded) {
-  try {
-    return JSON.parse(decodeURIComponent(escape(atob(encoded))));
-  } catch (error) {
-    console.warn(error);
-    return null;
-  }
 }
 
 async function copyText(text) {

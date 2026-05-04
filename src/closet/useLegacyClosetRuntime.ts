@@ -1,9 +1,12 @@
 import { useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
+import categoryUtilsUrl from "../../assets/js/closet-category-utils.js?url"
 import csvUtilsUrl from "../../assets/js/closet-csv-utils.js?url"
+import exportUtilsUrl from "../../assets/js/closet-export-utils.js?url"
 import filterUtilsUrl from "../../assets/js/closet-filter-utils.js?url"
 import formatUtilsUrl from "../../assets/js/closet-format-utils.js?url"
 import imageUtilsUrl from "../../assets/js/closet-image-utils.js?url"
+import measurementUtilsUrl from "../../assets/js/closet-measurement-utils.js?url"
 import legacyAppUrl from "../../assets/js/app.js?url"
 
 const tempImageModules = import.meta.glob("../../assets/temp/*.{avif,gif,jpeg,jpg,png,webp}", {
@@ -40,64 +43,40 @@ export function useLegacyClosetRuntime() {
       supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
     }
 
-    const loadLegacyApp = () => {
-      const script = document.createElement("script")
-      script.src = legacyAppUrl
-      script.defer = true
-      script.dataset.legacyCloset = "true"
-      document.body.append(script)
-    }
+    const legacyScripts = [
+      { src: formatUtilsUrl, name: "closetFormatUtils" },
+      { src: csvUtilsUrl, name: "closetCsvUtils" },
+      { src: categoryUtilsUrl, name: "closetCategoryUtils" },
+      { src: filterUtilsUrl, name: "closetFilterUtils" },
+      { src: imageUtilsUrl, name: "closetImageUtils" },
+      { src: measurementUtilsUrl, name: "closetMeasurementUtils" },
+      { src: exportUtilsUrl, name: "closetExportUtils" },
+      { src: legacyAppUrl, name: "legacyCloset" },
+    ]
 
-    const loadImageUtils = () => {
-      const script = document.createElement("script")
-      script.src = imageUtilsUrl
-      script.defer = true
-      script.dataset.closetImageUtils = "true"
-      script.onload = loadLegacyApp
-      script.onerror = loadLegacyApp
-      document.body.append(script)
-    }
+    const loadLegacyScripts = (index = 0) => {
+      const item = legacyScripts[index]
+      if (!item) return
 
-    const loadFilterUtils = () => {
       const script = document.createElement("script")
-      script.src = filterUtilsUrl
+      script.src = item.src
       script.defer = true
-      script.dataset.closetFilterUtils = "true"
-      script.onload = loadImageUtils
-      script.onerror = loadImageUtils
-      document.body.append(script)
-    }
-
-    const loadCsvUtils = () => {
-      const script = document.createElement("script")
-      script.src = csvUtilsUrl
-      script.defer = true
-      script.dataset.closetCsvUtils = "true"
-      script.onload = loadFilterUtils
-      script.onerror = loadFilterUtils
-      document.body.append(script)
-    }
-
-    const loadFormatUtils = () => {
-      const script = document.createElement("script")
-      script.src = formatUtilsUrl
-      script.defer = true
-      script.dataset.closetFormatUtils = "true"
-      script.onload = loadCsvUtils
-      script.onerror = loadCsvUtils
+      script.dataset[item.name] = "true"
+      script.onload = () => loadLegacyScripts(index + 1)
+      script.onerror = () => loadLegacyScripts(index + 1)
       document.body.append(script)
     }
 
     if (envConfig.supabaseUrl && envConfig.supabaseAnonKey) {
       window.WARDROBE_CONFIG = envConfig
-      loadFormatUtils()
+      loadLegacyScripts()
       return
     }
 
     const configScript = document.createElement("script")
     configScript.src = `${import.meta.env.BASE_URL}config.js?v=4`
-    configScript.onload = loadFormatUtils
-    configScript.onerror = loadFormatUtils
+    configScript.onload = () => loadLegacyScripts()
+    configScript.onerror = () => loadLegacyScripts()
     document.body.append(configScript)
   }, [])
 }
