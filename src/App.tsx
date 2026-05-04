@@ -1,6 +1,5 @@
 import { lazy, Suspense, useState, useEffect } from "react"
 import { Archive, ChevronDown, Database, Download, Grid2X2, Home, List, LogOut, Menu, PieChart, Plus, Search, Upload, User, X } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -47,7 +46,11 @@ function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      setActivePage(window.location.pathname === "/analysis" ? "analysis" : "closet")
+      const isAnalysis = window.location.pathname === "/analysis";
+      setActivePage(isAnalysis ? "analysis" : "closet");
+      if (!isAnalysis) {
+        window.dispatchEvent(new Event("closet:filters-change"));
+      }
     }
     window.addEventListener("popstate", handlePopState)
     return () => window.removeEventListener("popstate", handlePopState)
@@ -57,6 +60,9 @@ function App() {
     if (activePage === page) return
     setActivePage(page)
     window.history.pushState({}, "", page === "analysis" ? "/analysis" : "/")
+    if (page === "closet") {
+      window.dispatchEvent(new Event("closet:filters-change"));
+    }
   }
 
   const selectedParentLabel = snapshot.filters.parentCategory === "all" ? "전체" : snapshot.filters.parentCategory
@@ -79,13 +85,10 @@ function App() {
       </section>
 
       <div id="appShell" className="app-shell">
-        <header className="topbar">
-          <div className="topbar-title">
-            <Badge variant="secondary" className="eyebrow-badge">
-              Closet
-            </Badge>
-            <h1>옷장</h1>
-          </div>
+	        <header className="topbar">
+	          <div className="topbar-title">
+	            <h1>옷장</h1>
+	          </div>
           <TopCategoryNav snapshot={snapshot} activePage={activePage} setActivePage={navigateTo} />
           
           <label className="topbar-search desktop-only-search">
@@ -289,13 +292,13 @@ function App() {
 
           <aside id="detailPanel" className="detail-panel-bridge" hidden />
         </main>
-      </div>
 
-      {activePage === "analysis" && (
-        <Suspense fallback={<div className="content-loading" style={{ height: "100vh" }}><span className="loading-spinner" /></div>}>
-          <AnalysisPage />
-        </Suspense>
-      )}
+        {activePage === "analysis" && (
+          <Suspense fallback={<div className="content-loading" style={{ height: "100vh" }}><span className="loading-spinner" /></div>}>
+            <AnalysisPage />
+          </Suspense>
+        )}
+      </div>
 
       <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
         <DialogContent className="filter-sheet" showCloseButton={false}>

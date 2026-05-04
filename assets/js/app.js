@@ -62,10 +62,14 @@ const CATEGORY_MEASUREMENT_TEMPLATES = [
 const DEFAULT_CATEGORY_TREE = {
   상의: ["티셔츠 (긴팔)", "티셔츠 (반팔)", "셔츠 (긴팔)", "셔츠 (반팔)", "니트", "니트베스트", "가디건", "집업", "스웨트셔츠", "후디"],
   하의: ["슬랙스", "치노/퍼티그", "데님", "린넨/나일론", "스웨트/코듀로이", "반바지"],
-  아우터: ["코트", "블레이저", "야상", "재킷", "바람막이/플리스", "패딩"],
+  아우터: ["코트", "블레이저", "야상", "패딩", "바람막이/플리스", "재킷"],
   신발: ["스니커즈", "구두", "샌들", "부츠"],
   가방: ["백팩", "크로스백", "토트백"],
   악세사리: ["아이웨어", "모자", "벨트", "넥타이", "머플러/장갑", "시계/팔찌/반지", "지갑"]
+};
+
+const CHILD_CATEGORY_ORDER = {
+  아우터: ["코트", "블레이저", "야상", "패딩", "바람막이/플리스", "재킷"]
 };
 
 const CATEGORY_ICONS = {
@@ -122,6 +126,7 @@ const state = {
   draftItem: null,
   view: "grid",
   imageUrls: new Map(),
+  remoteImageCachePromises: new Map(),
   supabase: null,
   session: null,
   supabaseReady: false,
@@ -246,18 +251,21 @@ function cacheRefs() {
 
 function exposeReactBridge() {
 	window.closetBridge = {
-	  addImageFromUrl: addImageFromUrlValue,
-	  closeDetail,
-	  deleteSelectedItem,
+		  addImageFromUrl: addImageFromUrlValue,
+		  closeDetail,
+		  deleteSelectedItem,
+		  duplicateSelectedItem,
 	  getAutocompleteOptions,
 	  getChildCategoryOptions,
 	  getColorOptions,
-    getFilterSnapshot,
-    getImageUrl,
-    getMeasurementFieldsForItem,
-    getParentCategoryOptions,
-    isShoeCategory,
-    removeSelectedImage,
+	    getFilterSnapshot,
+	    getImageUrl,
+	    cacheRemoteImage,
+		    getMeasurementFieldsForItem,
+	    getParentCategoryOptions,
+	    isShoeCategory,
+	    openItem: selectItem,
+	    removeSelectedImage,
     resetFilters,
 	    saveImageEdit: saveImageEditFromOptions,
 	    saveSelectedItemRating,
@@ -414,6 +422,9 @@ function handleDocumentClick(event) {
       break;
     case "delete-item":
       deleteSelectedItem();
+      break;
+    case "duplicate-item":
+      duplicateSelectedItem();
       break;
     case "import-csv":
       if (!requireAuthenticatedMutation()) return;
@@ -806,22 +817,24 @@ function renderItemList() {
 
   refs.itemList.innerHTML = items.map(renderItemCard).join("");
   hydrateImages();
+  hydrateRemoteImages();
 }
 
 function renderItemCard(item) {
   const primaryImage = getPrimaryImage(item);
   const active = item.id === state.selectedId ? " active" : "";
   const archived = item.owned ? "" : " is-archived";
-  const colorStyle = `--dot:${colorToHex(item.color)}`;
-  const title = item.name || "이름 없는 제품";
-  const meta = [item.brand, item.sizeLabel, item.category].filter(Boolean).join(" · ");
+	  const colorStyle = `--dot:${colorToHex(item.color)}`;
+	  const title = item.name || "이름 없는 제품";
+	  const meta = [item.sizeLabel, item.category].filter(Boolean).join(" · ");
 
-  return `
-    <button class="item-tile${active}${archived}" data-action="select-item" data-id="${escapeAttr(item.id)}" type="button">
-      ${renderImageSlot(item, primaryImage)}
-      <div class="item-title">
-        <h3>${escapeHtml(title)}</h3>
-        <p>${escapeHtml(meta || "정보 없음")}</p>
+	  return `
+	    <button class="item-tile${active}${archived}" data-action="select-item" data-id="${escapeAttr(item.id)}" type="button">
+	      ${renderImageSlot(item, primaryImage)}
+	      <div class="item-title">
+	        ${item.brand ? `<span class="item-brand">${escapeHtml(item.brand)}</span>` : ""}
+	        <h3>${escapeHtml(title)}</h3>
+	        <p>${escapeHtml(meta || "정보 없음")}</p>
         <div class="chip-row">
 	          ${item.color ? `<span class="chip"><span class="color-dot" style="${escapeAttr(colorStyle)}"></span>${escapeHtml(item.color)}</span>` : ""}
 	          ${item.parentCategory ? `<span class="chip">${escapeHtml(item.parentCategory)}</span>` : ""}
@@ -871,7 +884,7 @@ function renderPriceLine(item) {
 
 function renderImageSlot(item, primaryImage) {
   if (primaryImage.remoteUrl) {
-    return `<div class="image-slot" style="background-image:url('${escapeAttr(primaryImage.remoteUrl)}')"></div>`;
+    return `<div class="image-slot" data-remote-item-id="${escapeAttr(item.id)}" data-remote-image-id="${escapeAttr(primaryImage.remoteId || "")}" data-remote-url="${escapeAttr(primaryImage.remoteUrl)}"></div>`;
   }
 
   if (primaryImage.localId) {
@@ -885,7 +898,7 @@ function renderDetailImage(primaryImage) {
   const editStyle = imageEditStyle(primaryImage.edit || defaultImageEdit());
 
   if (primaryImage.remoteUrl) {
-    return `<img class="detail-cover-img" data-edit-preview src="${escapeAttr(primaryImage.remoteUrl)}" style="${escapeAttr(editStyle)}" alt="">`;
+    return `<img class="detail-cover-img" data-edit-preview data-remote-image-id="${escapeAttr(primaryImage.remoteId || "")}" src="${escapeAttr(primaryImage.remoteUrl)}" style="${escapeAttr(editStyle)}" alt="">`;
   }
 
   if (primaryImage.localId) {
@@ -1160,7 +1173,20 @@ function getChildCategoryOptions(parentCategory) {
   const fromItems = state.items
     .filter((item) => !parent || item.parentCategory === parent)
     .map((item) => item.category);
-  return uniqueValues([...defaults, ...fromItems]);
+  return sortChildCategoryOptions(parent, uniqueValues([...defaults, ...fromItems]));
+}
+
+function sortChildCategoryOptions(parentCategory, values) {
+  const order = CHILD_CATEGORY_ORDER[parentCategory];
+  if (!order) return values;
+
+  const orderMap = new Map(order.map((category, index) => [category, index]));
+  return [...values].sort((a, b) => {
+    const aIndex = orderMap.has(a) ? orderMap.get(a) : Number.POSITIVE_INFINITY;
+    const bIndex = orderMap.has(b) ? orderMap.get(b) : Number.POSITIVE_INFINITY;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return a.localeCompare(b, "ko");
+  });
 }
 
 	function getColorOptions() {
@@ -1389,6 +1415,45 @@ async function createNewItem() {
   state.draftItem = item;
   state.selectedId = item.id;
   render();
+}
+
+async function duplicateSelectedItem() {
+  if (!requireAuthenticatedMutation()) return { ok: false };
+  const item = getSelectedItem();
+  if (!item) return { ok: false };
+
+  if (isDraftItem(item)) {
+    showToast("제품 정보를 먼저 저장한 뒤 복제해 주세요.");
+    return { ok: false };
+  }
+
+  const now = new Date().toISOString();
+  const measurements = { ...(item.measurements || {}) };
+  const duplicated = normalizeItemData({
+    ...item,
+    id: `item-${crypto.randomUUID()}`,
+    measurements,
+    measurementsDirty: Object.keys(measurements).length > 0,
+    imageIds: [],
+    primaryImageId: null,
+    remoteImages: [],
+    imagesDirty: false,
+    externalImageUrl: item.externalImageUrl || "",
+    externalImageEdit: normalizeImageEdit(item.externalImageEdit || defaultImageEdit()),
+    source: "manual",
+    raw: {
+      ...(item.raw || {}),
+      duplicatedFrom: item.id
+    },
+    createdAt: now,
+    updatedAt: now
+  });
+
+  state.draftItem = duplicated;
+  state.selectedId = duplicated.id;
+  render();
+  showToast("복제본을 만들었습니다. 필요한 항목을 수정한 뒤 저장해 주세요.");
+  return { ok: true, item: clonePlainItem(duplicated) };
 }
 
 async function saveSelectedItemFromForm(form) {
@@ -1892,11 +1957,7 @@ async function hydrateImages() {
       const url = await getImageUrl(imageId);
       if (!url) continue;
 
-      if (slot.tagName === "IMG") {
-        slot.src = url;
-      } else {
-        slot.style.backgroundImage = `url("${url}")`;
-      }
+      applyImageUrl(slot, url);
     } catch (error) {
       console.warn("Image hydration failed", error);
     }
@@ -1918,6 +1979,152 @@ function revokeImageUrl(imageId) {
   const url = state.imageUrls.get(imageId);
   if (url) URL.revokeObjectURL(url);
   state.imageUrls.delete(imageId);
+}
+
+async function hydrateRemoteImages() {
+  const slots = Array.from(document.querySelectorAll("[data-remote-image-id]"));
+  const seen = new Set();
+
+  for (const slot of slots) {
+    const imageId = slot.dataset.remoteImageId;
+    const itemId = slot.dataset.remoteItemId;
+    if (!imageId || !itemId) continue;
+
+    const key = `${itemId}:${imageId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    try {
+      const url = await cacheRemoteImage(itemId, imageId);
+      const fallbackUrl = slot.dataset.remoteUrl || "";
+      const imageUrl = url || fallbackUrl;
+      if (!imageUrl) continue;
+
+      slots
+        .filter((candidate) => candidate.dataset.remoteItemId === itemId && candidate.dataset.remoteImageId === imageId)
+        .forEach((candidate) => applyImageUrl(candidate, imageUrl));
+    } catch (error) {
+      console.warn("Remote image cache failed", error);
+    }
+  }
+}
+
+async function cacheRemoteImage(itemId, imageId) {
+  const item = state.items.find((candidate) => candidate.id === itemId) || (getSelectedItem()?.id === itemId ? getSelectedItem() : null);
+  const remote = (item?.remoteImages || []).find((candidate) => candidate?.id === imageId);
+  if (!item || !remote) return "";
+
+  const cacheKey = `${item.id}:${remote.id}`;
+  if (state.remoteImageCachePromises.has(cacheKey)) return state.remoteImageCachePromises.get(cacheKey);
+
+  const promise = cacheRemoteImageUncached(item, remote)
+    .finally(() => state.remoteImageCachePromises.delete(cacheKey));
+  state.remoteImageCachePromises.set(cacheKey, promise);
+  return promise;
+}
+
+async function cacheRemoteImageUncached(item, remote) {
+  const existing = await dbGet("images", remote.id);
+  if (existing?.blob && (!existing.cachedFromRemote || isFreshRemoteImageCache(existing, remote, item.updatedAt))) {
+    await promoteCachedRemoteImage(item, remote);
+    return getImageUrl(remote.id);
+  }
+
+  const fallbackRecord = existing?.blob ? existing : null;
+  const remoteUrl = remote.signedUrl || remote.publicUrl || "";
+  if (!remoteUrl) return fallbackRecord ? getImageUrl(remote.id) : "";
+
+  try {
+    const response = await fetch(remoteUrl, { mode: "cors", cache: "force-cache" });
+    if (!response.ok) throw new Error(`Remote image fetch failed: ${response.status}`);
+
+    const blob = await response.blob();
+    const cached = {
+      id: remote.id,
+      itemId: item.id,
+      blob,
+      mime: blob.type || remote.mime || "image/webp",
+      width: remote.width || existing?.width || null,
+      height: remote.height || existing?.height || null,
+      storagePath: remote.storagePath || "",
+      needsUpload: false,
+      cachedFromRemote: true,
+      remoteItemUpdatedAt: item.updatedAt || "",
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      cachedAt: new Date().toISOString()
+    };
+
+    await dbPut("images", cached);
+    revokeImageUrl(remote.id);
+    await promoteCachedRemoteImage(item, remote);
+    return getImageUrl(remote.id);
+  } catch (error) {
+    console.warn("Remote image could not be cached", error);
+    return fallbackRecord ? getImageUrl(remote.id) : "";
+  }
+}
+
+async function promoteCachedRemoteImage(item, remote) {
+  const current = state.items.find((candidate) => candidate.id === item.id);
+  if (!current || (current.primaryImageId && current.primaryImageId !== remote.id)) return;
+
+  const updated = {
+    ...current,
+    imageIds: uniqueValues([remote.id, ...(current.imageIds || [])]),
+    primaryImageId: current.primaryImageId || remote.id,
+    imagesDirty: false
+  };
+
+  await dbPut("items", normalizeItemData(updated));
+  replaceLocalItem(updated);
+}
+
+function isFreshRemoteImageCache(record, remote, itemUpdatedAt) {
+  return Boolean(
+    record?.blob &&
+    record.cachedFromRemote &&
+    record.storagePath === (remote.storagePath || "") &&
+    (record.remoteItemUpdatedAt || "") === (itemUpdatedAt || "")
+  );
+}
+
+async function resolveLocalImageState(existing, remoteImages, itemUpdatedAt) {
+  if (!existing) return { imageIds: [], primaryImageId: null };
+
+  const remoteById = new Map((remoteImages || []).filter((remote) => remote?.id).map((remote) => [remote.id, remote]));
+  const imageIds = [];
+
+  for (const imageId of existing.imageIds || []) {
+    if (!imageId) continue;
+
+    const record = await dbGet("images", imageId);
+    if (record?.cachedFromRemote) {
+      const remote = remoteById.get(imageId);
+      if (remote && isFreshRemoteImageCache(record, remote, itemUpdatedAt)) {
+        imageIds.push(imageId);
+      }
+      continue;
+    }
+
+    imageIds.push(imageId);
+  }
+
+  const uniqueImageIds = uniqueValues(imageIds);
+  let primaryImageId = uniqueImageIds.includes(existing.primaryImageId) ? existing.primaryImageId : null;
+  if (!primaryImageId) {
+    const primaryRemote = (remoteImages || []).find((remote) => remote?.isPrimary && uniqueImageIds.includes(remote.id));
+    primaryImageId = primaryRemote?.id || uniqueImageIds[0] || null;
+  }
+
+  return { imageIds: uniqueImageIds, primaryImageId };
+}
+
+function applyImageUrl(element, url) {
+  if (element.tagName === "IMG") {
+    element.src = url;
+  } else {
+    element.style.backgroundImage = `url("${url}")`;
+  }
 }
 
 function getSelectedItem() {
@@ -2995,14 +3202,16 @@ async function pullFromSupabase(options = {}) {
         id: image.id,
         storagePath: image.storage_path,
         signedUrl,
-        isPrimary: image.is_primary,
-        width: image.width,
-        height: image.height
-      };
-    });
+	        isPrimary: image.is_primary,
+	        width: image.width,
+	        height: image.height,
+	        mime: image.mime || "image/webp"
+	      };
+	    });
 
-    const existing = await dbGet("items", row.id);
-    const item = {
+	    const existing = await dbGet("items", row.id);
+	    const localImageState = await resolveLocalImageState(existing, remoteImages, row.updated_at);
+	    const item = {
       id: row.id,
       name: row.name || "",
       productUrl: row.product_url || "",
@@ -3022,8 +3231,8 @@ async function pullFromSupabase(options = {}) {
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         .map((measure) => [measure.custom_label || measure.label, Number(measure.value)])),
       measurementsDirty: false,
-      imageIds: existing?.imageIds || [],
-      primaryImageId: existing?.primaryImageId || null,
+	      imageIds: localImageState.imageIds,
+	      primaryImageId: localImageState.primaryImageId,
       remoteImages,
       imagesDirty: false,
       externalImageUrl: cleanText(row.image_url || row.raw?.externalImageUrl),

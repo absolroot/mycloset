@@ -55,38 +55,38 @@ export default function AnalysisPage() {
 
   return (
     <div className="analysis-page">
-      <header className="analysis-header">
-        <div className="analysis-header-title">
-          <h2>옷장 분석</h2>
-          <p className="text-sm text-muted-foreground">내 옷장의 소비 패턴과 브랜드, 사이즈를 분석합니다.</p>
-        </div>
-        <div className="analysis-header-actions">
-          <ToggleGroup type="single" value={ownedOnly ? "owned" : "all"} onValueChange={(val) => { if (val) setOwnedOnly(val === "owned"); }}>
-            <ToggleGroupItem value="owned" aria-label="보유 중">
-              <BoxSelect className="size-4 mr-2" />
-              보유 중
-            </ToggleGroupItem>
-            <ToggleGroupItem value="all" aria-label="전체">
-              <Infinity className="size-4 mr-2" />
-              전체
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-      </header>
+      <div className="analysis-header-banner">
+        <header className="analysis-header">
+          <div className="analysis-header-title">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">옷장 인사이트</h2>
+            <p className="text-sm text-muted-foreground mt-1">나만의 옷장 데이터를 기반으로 한 종합 분석 대시보드</p>
+          </div>
+	          <div className="analysis-header-actions">
+	            <ToggleGroup 
+	              type="single" 
+	              value={ownedOnly ? "owned" : "all"} 
+	              onValueChange={(val) => { if (val) setOwnedOnly(val === "owned"); }}
+	              className="analysis-scope-toggle"
+	            >
+	              <ToggleGroupItem value="owned" aria-label="보유 중" className="analysis-scope-toggle-item">
+	                <BoxSelect className="size-3.5" />
+	                보유 중
+	              </ToggleGroupItem>
+	              <ToggleGroupItem value="all" aria-label="전체" className="analysis-scope-toggle-item">
+	                <Infinity className="size-3.5" />
+	                전체
+	              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+        </header>
+      </div>
 
       <main className="analysis-content">
         <SummarySection summary={summary} />
-        
-        <div className="analysis-dashboard-grid">
-          <div className="analysis-column">
-            <ConsumptionSection items={filteredItems} />
-            <BrandSection stats={brandStats} />
-          </div>
-          <div className="analysis-column">
-            <ColorSection stats={colorStats} />
-            <MeasurementSection ranges={measurementRanges} />
-          </div>
-        </div>
+        <ConsumptionSection items={filteredItems} />
+        <ColorSection stats={colorStats} />
+        <MeasurementSection ranges={measurementRanges} items={filteredItems} />
+        <BrandSection stats={brandStats} />
       </main>
     </div>
   );

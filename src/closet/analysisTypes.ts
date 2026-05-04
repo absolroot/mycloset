@@ -23,6 +23,7 @@ export interface AnalysisSummary {
   ownedCount: number;
   totalPurchasePrice: number;
   totalRetailPrice: number;
+  retailPriceCount: number;
   totalDiscount: number;
   averageDiscountRate: number;
   averagePurchasePrice: number;
@@ -46,6 +47,7 @@ export interface BrandStats {
   averageDiscountRate: number;
   averagePurchasePrice: number;
   categories: Record<string, number>;
+  categorySizes: Record<string, Record<string, number>>;
   topCategory: string;
   topColor: string;
   lastPurchaseDate: string | null;
@@ -59,4 +61,4 @@ export interface MeasurementRange {
   count: number;
 }
 
-export type CategoryMeasurementRanges = Record<string, Record<string, MeasurementRange>>;
+export type CategoryMeasurementRanges = Record<string, Record<string, Record<string, MeasurementRange>>>;

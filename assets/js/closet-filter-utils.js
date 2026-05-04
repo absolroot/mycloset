@@ -25,6 +25,9 @@
   ];
 
   const PARENT_CATEGORY_ORDER = ["아우터", "상의", "하의", "신발", "가방", "악세사리"];
+  const CHILD_CATEGORY_ORDER = {
+    아우터: ["코트", "블레이저", "야상", "패딩", "바람막이/플리스", "재킷"]
+  };
 
   function sortParentCategoryOptions(values) {
     const order = new Map(PARENT_CATEGORY_ORDER.map((category, index) => [category, index]));
@@ -41,6 +44,21 @@
     return index === -1 ? Number.POSITIVE_INFINITY : index;
   }
 
+  function childCategoryIndex(parentCategory, childCategory) {
+    const order = CHILD_CATEGORY_ORDER[parentCategory];
+    if (!order) return Number.POSITIVE_INFINITY;
+    const index = order.indexOf(childCategory);
+    return index === -1 ? Number.POSITIVE_INFINITY : index;
+  }
+
+  function comparePurchaseDateDesc(a, b) {
+    const aTime = a.purchaseDate ? Date.parse(a.purchaseDate) : 0;
+    const bTime = b.purchaseDate ? Date.parse(b.purchaseDate) : 0;
+    const safeATime = Number.isFinite(aTime) ? aTime : 0;
+    const safeBTime = Number.isFinite(bTime) ? bTime : 0;
+    return safeBTime - safeATime;
+  }
+
   function compareDefaultOrder(a, b, sortByUpdated) {
     const ownedDiff = Number(!a.owned) - Number(!b.owned);
     if (ownedDiff) return ownedDiff;
@@ -51,8 +69,14 @@
     const parentNameDiff = (a.parentCategory || "").localeCompare(b.parentCategory || "", "ko");
     if (parentNameDiff) return parentNameDiff;
 
+    const childOrderDiff = childCategoryIndex(a.parentCategory, a.category) - childCategoryIndex(b.parentCategory, b.category);
+    if (childOrderDiff) return childOrderDiff;
+
     const childDiff = (a.category || "").localeCompare(b.category || "", "ko");
     if (childDiff) return childDiff;
+
+    const purchaseDateDiff = comparePurchaseDateDesc(a, b);
+    if (purchaseDateDiff) return purchaseDateDiff;
 
     const nameDiff = (a.name || "").localeCompare(b.name || "", "ko");
     if (nameDiff) return nameDiff;

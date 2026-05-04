@@ -26,7 +26,7 @@ export function ColorSection({ stats }: { stats: ColorStats[] }) {
               <div 
                 key={stat.color} 
                 className="color-stacked-segment" 
-                style={{ width: `${stat.ratio * 100}%`, backgroundColor: getColorHex(stat.color) }}
+                style={{ width: `${stat.ratio * 100}%`, background: getColorHex(stat.color) }}
                 title={`${stat.color} - ${(stat.ratio * 100).toFixed(1)}%`}
               />
             ))}
@@ -36,8 +36,8 @@ export function ColorSection({ stats }: { stats: ColorStats[] }) {
             {stats.map((stat) => (
               <div key={stat.color} className="swatch-item">
                 <div 
-                  className="swatch-color" 
-                  style={{ backgroundColor: getColorHex(stat.color) }}
+                  className="swatch-color border border-border/50 shadow-sm" 
+                  style={{ background: getColorHex(stat.color) }}
                 />
                 <div className="swatch-info">
                   <div className="swatch-name">{stat.color}</div>

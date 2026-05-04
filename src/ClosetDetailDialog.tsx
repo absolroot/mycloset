@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react"
-import { CalendarIcon, ChevronLeft, ImagePlus, LinkIcon, Pencil, Plus, Save, Share2, SlidersHorizontal, Star, Trash2, X, XCircle } from "lucide-react"
+import { CalendarIcon, ChevronLeft, Copy, ImagePlus, LinkIcon, Pencil, Plus, Save, Share2, SlidersHorizontal, Star, Trash2, X, XCircle } from "lucide-react"
 import { format } from "date-fns"
 
 import { Button } from "@/components/ui/button"
@@ -102,14 +102,17 @@ type ClosetBridge = {
   addImageFromUrl: (url: string, item?: DetailSavePayload) => Promise<unknown>
   closeDetail: () => void
   deleteSelectedItem: () => Promise<unknown>
+  duplicateSelectedItem: () => Promise<unknown>
   getChildCategoryOptions: (parentCategory: string) => string[]
   getAutocompleteOptions: (field?: AutocompleteField) => string[] | Partial<Record<AutocompleteField, string[]>>
   getColorOptions: () => string[]
   getFilterSnapshot?: () => unknown
   getImageUrl: (imageId: string) => Promise<string>
+  cacheRemoteImage?: (itemId: string, imageId: string) => Promise<string>
   getMeasurementFieldsForItem: (item: Partial<Omit<ClosetItem, "measurements">> & { measurements?: Record<string, unknown> }) => MeasurementField[]
   getParentCategoryOptions: () => string[]
   isShoeCategory: (item: Partial<ClosetItem>) => boolean
+  openItem?: (id: string) => void
   removeSelectedImage: () => Promise<unknown>
   resetFilters?: () => void
   saveImageEdit: (edit: ImageEdit) => Promise<unknown>
@@ -407,6 +410,11 @@ export function ClosetDetailDialog() {
       }
 
       if (payload.primaryImage.remoteUrl) {
+        if (payload.primaryImage.remoteId) {
+          const cachedUrl = await window.closetBridge?.cacheRemoteImage?.(payload.item.id, payload.primaryImage.remoteId)
+          if (active) setImageSrc(cachedUrl || payload.primaryImage.remoteUrl)
+          return
+        }
         setImageSrc(payload.primaryImage.remoteUrl)
         return
       }
@@ -436,6 +444,7 @@ export function ClosetDetailDialog() {
     cleanOptions([...(payload?.autocompleteOptions?.[field] || []), ...getBridgeAutocompleteOptions(field)])
   const selectedDate = dateFromString(form?.purchaseDate || "")
   const categoryIsCustom = Boolean(form?.category && !childOptions.includes(form.category))
+  const showChildCategorySelect = Boolean(form?.parentCategory)
   const colorIsCustom = customColorMode
   const showShoeSize = useMemo(
     () => window.closetBridge?.isShoeCategory({ parentCategory: form?.parentCategory || "", category: form?.category || "" }) || false,
@@ -541,6 +550,13 @@ export function ClosetDetailDialog() {
       setForm((current) => (current ? { ...current, rating: previousRating } : current))
     }
     setRatingSaving(false)
+  }
+
+  const handleDuplicate = async () => {
+    const result = await window.closetBridge?.duplicateSelectedItem()
+    if (bridgeResultOk(result)) {
+      setMode("edit")
+    }
   }
 
   const currentSavePayload = (): DetailSavePayload | undefined => {
@@ -706,16 +722,20 @@ export function ClosetDetailDialog() {
                           ))}
 	                        </div>
 	                      </div>
-	                      <SelectField
-                        label="상세 카테고리"
-                        value={categoryIsCustom ? CUSTOM_VALUE : form.category || NONE_VALUE}
-                        options={childOptions}
-                        placeholder="선택 안 함"
-                        customLabel="+ 새 카테고리 추가"
-                        onChange={handleCategoryChange}
-                      />
-                      {categoryIsCustom || (!form.category && customCategory) ? (
-                        <TextField label="새 카테고리" value={customCategory} className="wide" onChange={handleCustomCategoryChange} />
+                      {showChildCategorySelect ? (
+                        <>
+                          <SelectField
+                            label="상세 카테고리"
+                            value={categoryIsCustom ? CUSTOM_VALUE : form.category || NONE_VALUE}
+                            options={childOptions}
+                            placeholder="선택 안 함"
+                            customLabel="+ 새 카테고리 추가"
+                            onChange={handleCategoryChange}
+                          />
+                          {categoryIsCustom || (!form.category && customCategory) ? (
+                            <TextField label="새 카테고리" value={customCategory} className="wide" onChange={handleCustomCategoryChange} />
+                          ) : null}
+                        </>
                       ) : null}
                       <AutocompleteTextField label="브랜드" value={form.brand} options={autocompleteOptions("brand")} onChange={(value) => updateField("brand", value)} />
                       <SelectField
@@ -1023,12 +1043,16 @@ export function ClosetDetailDialog() {
                   <Trash2 className="size-4" />
                   삭제
                 </Button>
-	                <div className="topbar-actions">
-	                  <Button className="button secondary" type="button" variant="outline" onClick={() => window.closetBridge?.shareSelectedItem()}>
-	                    <Share2 className="size-4" />
-	                    공유 링크
-	                  </Button>
-	                </div>
+                <div className="topbar-actions">
+                  <Button className="button secondary" type="button" variant="outline" onClick={() => window.closetBridge?.shareSelectedItem()}>
+                    <Share2 className="size-4" />
+                    공유 링크
+                  </Button>
+                  <Button className="button secondary" type="button" variant="outline" onClick={handleDuplicate}>
+                    <Copy className="size-4" />
+                    복제
+                  </Button>
+                </div>
 	              </div>
             </div>
           )
