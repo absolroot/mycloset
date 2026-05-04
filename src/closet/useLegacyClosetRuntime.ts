@@ -6,6 +6,16 @@ import formatUtilsUrl from "../../assets/js/closet-format-utils.js?url"
 import imageUtilsUrl from "../../assets/js/closet-image-utils.js?url"
 import legacyAppUrl from "../../assets/js/app.js?url"
 
+const tempImageModules = import.meta.glob("../../assets/temp/*.{avif,gif,jpeg,jpg,png,webp}", {
+  eager: true,
+  import: "default",
+  query: "?url",
+}) as Record<string, string>
+
+const tempImageUrls = Object.entries(tempImageModules)
+  .sort(([a], [b]) => a.localeCompare(b, "en"))
+  .map(([, url]) => url)
+
 declare global {
   interface Window {
     __closetLegacyLoaded?: boolean
@@ -14,6 +24,7 @@ declare global {
       supabaseAnonKey?: string
     }
     WARDROBE_SUPABASE_CREATE_CLIENT?: typeof createClient
+    WARDROBE_TEMP_IMAGE_URLS?: string[]
   }
 }
 
@@ -22,6 +33,7 @@ export function useLegacyClosetRuntime() {
     if (window.__closetLegacyLoaded) return
     window.__closetLegacyLoaded = true
     window.WARDROBE_SUPABASE_CREATE_CLIENT = createClient
+    window.WARDROBE_TEMP_IMAGE_URLS = tempImageUrls
 
     const envConfig = {
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL,

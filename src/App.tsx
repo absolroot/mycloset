@@ -1,8 +1,8 @@
 import { lazy, Suspense, useState, useEffect } from "react"
-import { Archive, ChevronDown, Database, Download, Grid2X2, Home, List, LogOut, Menu, PieChart, Plus, Search, Upload, User, X } from "lucide-react"
+import { Archive, ArrowUp, Database, Download, Grid2X2, Home, List, LogOut, Menu, MoreHorizontal, PieChart, Plus, Search, Upload, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -11,9 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { getActiveCount, setBridgeFilters, toggleFilterValue, useFilterSnapshot } from "./closet/filterBridge"
 import {
-  CategoryPicker,
   CategoryRail,
-  CategoryTab,
   ColorOptionGrid,
   FilterSection,
   LegacyFilterBridges,
@@ -39,9 +37,11 @@ function App() {
   const [activePage, setActivePage] = useState<"closet" | "analysis">(() => {
     return window.location.pathname === "/analysis" ? "analysis" : "closet"
   })
-  const [categoryOpen, setCategoryOpen] = useState(false)
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [activeSheetTab, setActiveSheetTab] = useState<FilterKey>("colors")
+  const [showScrollTop, setShowScrollTop] = useState(false)
   const isLoading = snapshot.loading
 
   useEffect(() => {
@@ -54,6 +54,13 @@ function App() {
     }
     window.addEventListener("popstate", handlePopState)
     return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
+
+  useEffect(() => {
+    const handleScroll = () => setShowScrollTop(window.scrollY > 720)
+    handleScroll()
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
   const navigateTo = (page: "closet" | "analysis") => {
@@ -85,10 +92,11 @@ function App() {
       </section>
 
       <div id="appShell" className="app-shell">
-	        <header className="topbar">
-	          <div className="topbar-title">
-	            <h1>옷장</h1>
-	          </div>
+		        <header className="topbar">
+		          <div className="topbar-title">
+		            <h1>옷장</h1>
+		            <span className="mobile-topbar-context">{activePage === "analysis" ? "분석" : `${resultTitle} · ${snapshot.visibleCount}개`}</span>
+		          </div>
           <TopCategoryNav snapshot={snapshot} activePage={activePage} setActivePage={navigateTo} />
           
           <label className="topbar-search desktop-only-search">
@@ -117,7 +125,7 @@ function App() {
             </Button>
             <Popover>
               <PopoverTrigger asChild>
-                <Button className="topbar-icon-action" type="button" variant="outline" aria-label="가져오기">
+                <Button className="topbar-icon-action topbar-file-action" type="button" variant="outline" aria-label="가져오기">
                   <Upload className="size-4" />
                 </Button>
               </PopoverTrigger>
@@ -130,11 +138,36 @@ function App() {
             </Popover>
             <Popover>
               <PopoverTrigger asChild>
-                <Button className="topbar-icon-action" type="button" variant="outline" aria-label="내보내기">
+                <Button className="topbar-icon-action topbar-file-action" type="button" variant="outline" aria-label="내보내기">
                   <Download className="size-4" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="topbar-action-menu" align="end">
+                <button data-action="export-csv" type="button">
+                  <Download className="size-4" />
+                  CSV 내보내기
+                </button>
+                <button data-action="export-json" type="button">
+                  <Database className="size-4" />
+                  JSON 백업
+                </button>
+                <button data-action="export-zip" type="button">
+                  <Archive className="size-4" />
+                  이미지 포함 ZIP 백업
+                </button>
+              </PopoverContent>
+            </Popover>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button className="topbar-icon-action mobile-topbar-more" type="button" variant="outline" aria-label="더보기">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="topbar-action-menu mobile-more-menu" align="end">
+                <button data-action="import-csv" type="button">
+                  <Upload className="size-4" />
+                  CSV 가져오기
+                </button>
                 <button data-action="export-csv" type="button">
                   <Download className="size-4" />
                   CSV 내보내기
@@ -194,30 +227,6 @@ function App() {
             </div>
 
             <div className="mobile-filter-surface">
-              <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
-                <PopoverTrigger asChild>
-                  <Button className="mobile-category-button" type="button" variant="ghost">
-                    <span>{selectedParentLabel}</span>
-                    <ChevronDown className="size-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="mobile-category-popover" align="start">
-                  <CategoryPicker snapshot={snapshot} onPick={() => setCategoryOpen(false)} />
-                </PopoverContent>
-              </Popover>
-
-              <div className="mobile-child-tabs" aria-label={`${selectedParentLabel} 하위 카테고리`}>
-                <CategoryTab label="전체" active={snapshot.filters.childCategory === "all"} onClick={() => setBridgeFilters({ childCategory: "all" })} />
-                {snapshot.options.childCategories.map((category) => (
-                  <CategoryTab
-                    key={category}
-                    label={category}
-                    active={snapshot.filters.childCategory === category}
-                    onClick={() => setBridgeFilters({ childCategory: category })}
-                  />
-                ))}
-              </div>
-
               <div className="mobile-filter-chips" aria-label="필터">
                 {FILTER_TABS.map((tab) => (
                   <Button
@@ -239,16 +248,6 @@ function App() {
 
           <section className={`content ${isLoading ? "is-loading" : ""}`} aria-label="옷장 목록">
             <div className="content-toolbar">
-              <label className="content-search mobile-only-search">
-                <Search className="size-4" />
-                <Input
-                  id="searchInput"
-                  type="search"
-                  value={snapshot.filters.query}
-                  placeholder="제품명, 브랜드, 색상"
-                  onChange={(event) => setBridgeFilters({ query: event.target.value })}
-                />
-              </label>
               <div className="result-heading">
                 <h2 id="resultTitle">{resultTitle}</h2>
                 <p id="resultCount">{snapshot.visibleCount}개</p>
@@ -304,6 +303,7 @@ function App() {
         <DialogContent className="filter-sheet" showCloseButton={false}>
           <DialogHeader className="filter-sheet-header">
             <DialogTitle>필터</DialogTitle>
+            <DialogDescription className="sr-only">상품 목록에 적용할 필터를 선택합니다.</DialogDescription>
             <Button className="icon-button" type="button" variant="ghost" aria-label="닫기" onClick={() => setSheetOpen(false)}>
               <X className="size-5" />
             </Button>
@@ -329,6 +329,95 @@ function App() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={categorySheetOpen} onOpenChange={setCategorySheetOpen}>
+        <DialogContent className="category-sheet" showCloseButton={false}>
+          <DialogHeader className="filter-sheet-header">
+            <DialogTitle>카테고리</DialogTitle>
+            <DialogDescription className="sr-only">상위 카테고리와 하위 카테고리를 선택합니다.</DialogDescription>
+            <Button className="icon-button" type="button" variant="ghost" aria-label="닫기" onClick={() => setCategorySheetOpen(false)}>
+              <X className="size-5" />
+            </Button>
+          </DialogHeader>
+          <div className="category-sheet-body">
+            <section className="category-sheet-column" aria-label="상위 카테고리">
+              <button
+                className={snapshot.filters.parentCategory === "all" ? "active" : ""}
+                type="button"
+                onClick={() => setBridgeFilters({ parentCategory: "all", childCategory: "all" })}
+              >
+                전체
+              </button>
+              {snapshot.options.parentCategories.map((category) => (
+                <button
+                  key={category}
+                  className={snapshot.filters.parentCategory === category ? "active" : ""}
+                  type="button"
+                  onClick={() => setBridgeFilters({ parentCategory: category, childCategory: "all" })}
+                >
+                  {category}
+                </button>
+              ))}
+            </section>
+            <section className="category-sheet-column category-sheet-children" aria-label="하위 카테고리">
+              <button
+                className={snapshot.filters.childCategory === "all" ? "active" : ""}
+                type="button"
+                onClick={() => {
+                  setBridgeFilters({ childCategory: "all" })
+                  setCategorySheetOpen(false)
+                }}
+              >
+                전체 보기
+              </button>
+              {snapshot.options.childCategories.map((category) => (
+                <button
+                  key={category}
+                  className={snapshot.filters.childCategory === category ? "active" : ""}
+                  type="button"
+                  onClick={() => {
+                    setBridgeFilters({ childCategory: category })
+                    setCategorySheetOpen(false)
+                  }}
+                >
+                  {category}
+                </button>
+              ))}
+            </section>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+        <DialogContent className="search-sheet" showCloseButton={false}>
+          <DialogHeader className="filter-sheet-header">
+            <DialogTitle>검색</DialogTitle>
+            <DialogDescription className="sr-only">제품명, 브랜드, 색상으로 옷장을 검색합니다.</DialogDescription>
+            <Button className="icon-button" type="button" variant="ghost" aria-label="닫기" onClick={() => setSearchOpen(false)}>
+              <X className="size-5" />
+            </Button>
+          </DialogHeader>
+          <label className="search-sheet-field">
+            <Search className="size-4" />
+            <Input
+              id="searchInput"
+              autoFocus
+              type="search"
+              value={snapshot.filters.query}
+              placeholder="제품명, 브랜드, 색상"
+              onChange={(event) => setBridgeFilters({ query: event.target.value })}
+            />
+          </label>
+          <div className="search-sheet-actions">
+            <span>{snapshot.visibleCount}개</span>
+            {snapshot.filters.query ? (
+              <Button className="button secondary compact" type="button" variant="outline" onClick={() => setBridgeFilters({ query: "" })}>
+                지우기
+              </Button>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Suspense fallback={null}>
         <ClosetDetailDialog />
       </Suspense>
@@ -348,13 +437,49 @@ function App() {
             </Button>
           </header>
           <p className="dialog-copy">Google 계정으로 로그인하면 PC와 모바일에서 같은 옷장을 사용할 수 있습니다.</p>
+          <Button className="button secondary full" data-action="start-temporary" type="button" variant="outline">
+            임시 테스트 모드로 보기
+          </Button>
           <Button className="button primary full" type="submit">
             Google로 계속하기
           </Button>
         </form>
       </dialog>
 
+      <dialog id="profileDialog" className="dialog">
+        <form method="dialog">
+          <header className="dialog-header">
+            <h2>임시 계정</h2>
+            <Button
+              aria-label="닫기"
+              className="icon-button"
+              type="button"
+              variant="ghost"
+              onClick={(event) => event.currentTarget.closest("dialog")?.close()}
+            >
+              <X className="size-5" />
+            </Button>
+          </header>
+          <p className="dialog-copy">CSV와 assets/temp 이미지로 만든 로컬 테스트 계정입니다. 실제 Supabase 계정과 동기화하지 않습니다.</p>
+          <Button className="button secondary full" data-action="exit-temporary" type="button" variant="outline">
+            로그인 모드로 돌아가기
+          </Button>
+        </form>
+      </dialog>
+
       <div id="toast" className="toast" role="status" aria-live="polite" />
+
+      {activePage === "closet" && showScrollTop ? (
+        <Button
+          aria-label="맨 위로"
+          className="scroll-top-button"
+          type="button"
+          variant="outline"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        >
+          <ArrowUp className="size-5" />
+        </Button>
+      ) : null}
 
       <nav className="mobile-bottom-nav">
         <button className={`nav-item ${activePage === "closet" ? "active" : ""}`} type="button" onClick={() => {
@@ -366,15 +491,14 @@ function App() {
         </button>
         <button className="nav-item" type="button" onClick={() => {
           navigateTo("closet");
-          setCategoryOpen(!categoryOpen);
+          setCategorySheetOpen(true);
         }}>
           <Menu className="size-6" />
           <span>카테고리</span>
         </button>
         <button className="nav-item" type="button" onClick={() => {
           navigateTo("closet");
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-          setTimeout(() => document.getElementById("searchInput")?.focus(), 100);
+          setSearchOpen(true);
         }}>
           <Search className="size-6" />
           <span>검색</span>
@@ -387,7 +511,8 @@ function App() {
           <span>분석</span>
         </button>
         <button className="nav-item" type="button" onClick={() => {
-          const dialog = document.getElementById("authDialog") as HTMLDialogElement;
+          const temporary = window.localStorage.getItem("closet-temporary-mode") === "1";
+          const dialog = document.getElementById(temporary ? "profileDialog" : "authDialog") as HTMLDialogElement;
           dialog?.showModal();
         }}>
           <User className="size-6" />

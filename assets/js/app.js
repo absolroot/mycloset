@@ -2,6 +2,8 @@
 
 const DEFAULT_CSV_FILE = "Closet 137abb41507c80699008e26e88fa26d9_all (2).csv";
 const DB_NAME = "closet-pwa";
+const TEMP_DB_NAME = "closet-pwa-temporary";
+const TEMP_MODE_STORAGE_KEY = "closet-temporary-mode";
 const DB_VERSION = 1;
 const FULL_PULL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const SIGNED_IMAGE_URL_MAX_AGE_MS = 45 * 60 * 1000;
@@ -141,7 +143,8 @@ const state = {
   lastSyncError: null,
   lastSyncedAt: null,
   authPrompted: false,
-  lastDetailSignature: ""
+  lastDetailSignature: "",
+  temporary: false
 };
 
 const refs = {};
@@ -157,6 +160,7 @@ async function init() {
   exposeReactBridge();
   bindEvents();
   await registerServiceWorker();
+  state.temporary = readTemporaryModePreference();
 
   state.db = await openDatabase();
 
@@ -165,6 +169,11 @@ async function init() {
 
   await restorePendingSync();
   await initSupabase();
+
+  if (state.temporary) {
+    await startTemporarySession({ silent: true });
+    return;
+  }
 
   if (shouldRequireAuth()) {
     state.items = [];
@@ -355,6 +364,68 @@ async function registerServiceWorker() {
   }
 }
 
+function readTemporaryModePreference() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = ["temp", "temporary", "demo", "test"].some((key) => params.has(key));
+  if (requested) {
+    window.localStorage.setItem(TEMP_MODE_STORAGE_KEY, "1");
+    return true;
+  }
+
+  return window.localStorage.getItem(TEMP_MODE_STORAGE_KEY) === "1";
+}
+
+async function startTemporarySession(options = {}) {
+  state.temporary = true;
+  window.localStorage.setItem(TEMP_MODE_STORAGE_KEY, "1");
+
+  if (state.db?.name !== TEMP_DB_NAME) {
+    state.db?.close?.();
+    state.db = await openDatabase();
+  }
+
+  if (state.supabase && state.session) {
+    try {
+      await state.supabase.auth.signOut();
+    } catch (error) {
+      console.warn("Temporary mode sign-out failed", error);
+    }
+    state.session = null;
+  }
+
+  state.pendingItemIds.clear();
+  state.pendingDeleteIds.clear();
+  state.pendingImageDeletes.clear();
+  clearTimeout(state.syncTimer);
+  updateSyncButton();
+
+  state.loading = true;
+  render();
+
+  await loadLocalItems();
+  if (!state.items.length) {
+    await importDefaultCsv({ silent: true, useTempImages: true });
+  }
+  await loadLocalItems();
+
+  state.loading = false;
+  render();
+  if (refs.authDialog?.open) refs.authDialog.close();
+  if (!options.silent) showToast("임시 테스트 모드가 시작되었습니다.");
+}
+
+async function exitTemporarySession() {
+  window.localStorage.removeItem(TEMP_MODE_STORAGE_KEY);
+  state.temporary = false;
+  showToast("임시 테스트 모드를 종료했습니다. 새로고침하면 로그인 모드로 돌아갑니다.");
+  window.setTimeout(() => window.location.reload(), 650);
+}
+
+function getTemporaryImageUrl(index) {
+  const urls = Array.isArray(window.WARDROBE_TEMP_IMAGE_URLS) ? window.WARDROBE_TEMP_IMAGE_URLS : [];
+  return urls[index % urls.length] || "";
+}
+
 function handleDocumentClick(event) {
   if (event.target === refs.detailPanel) {
     closeDetail();
@@ -385,7 +456,10 @@ function handleDocumentClick(event) {
   if (categoryBtn) {
     const value = categoryBtn.dataset.categoryValue;
     const container = categoryBtn.closest('.category-field');
-    const input = container.querySelector('input[type="hidden"]');
+    const input = container?.querySelector('input[type="hidden"]');
+    if (!container || !input) {
+      return;
+    }
     input.value = value;
     container.querySelectorAll('.category-grid-btn').forEach(btn => btn.classList.remove('active'));
     categoryBtn.classList.add('active');
@@ -416,6 +490,12 @@ function handleDocumentClick(event) {
       break;
     case "logout":
       requestLogout();
+      break;
+    case "start-temporary":
+      startTemporarySession();
+      break;
+    case "exit-temporary":
+      exitTemporarySession();
       break;
     case "close-detail":
       closeDetail();
@@ -487,7 +567,7 @@ async function handleDocumentSubmit(event) {
 
 async function openDatabase() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(getDatabaseName(), DB_VERSION);
 
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -506,6 +586,10 @@ async function openDatabase() {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
+}
+
+function getDatabaseName() {
+  return state.temporary ? TEMP_DB_NAME : DB_NAME;
 }
 
 function dbAll(storeName) {
@@ -622,18 +706,18 @@ async function pruneLocalItems(remoteIds) {
   }
 }
 
-async function importDefaultCsv() {
+async function importDefaultCsv(options = {}) {
   try {
     const response = await fetch(`./${encodeURIComponent(DEFAULT_CSV_FILE)}`);
     if (!response.ok) throw new Error(`CSV fetch failed: ${response.status}`);
     const text = await response.text();
-    const items = csvToItems(text);
+    const items = csvToItems(text, { useTempImages: Boolean(options.useTempImages) });
     await upsertItems(items);
     await loadLocalItems();
-    showToast(`${items.length}개 제품을 CSV에서 가져왔습니다.`);
+    if (!options.silent) showToast(`${items.length}개 제품을 CSV에서 가져왔습니다.`);
   } catch (error) {
     console.warn(error);
-    showToast("CSV 자동 가져오기에 실패했습니다. 파일 선택으로 가져올 수 있습니다.");
+    if (!options.silent) showToast("CSV 자동 가져오기에 실패했습니다. 파일 선택으로 가져올 수 있습니다.");
   }
 }
 
@@ -647,7 +731,7 @@ async function handleCsvFile(event) {
 
   try {
     const text = await file.text();
-    const items = csvToItems(text);
+    const items = csvToItems(text, { useTempImages: state.temporary });
     await upsertItems(items);
     await loadLocalItems();
     render();
@@ -661,9 +745,9 @@ async function handleCsvFile(event) {
   }
 }
 
-function csvToItems(text) {
+function csvToItems(text, options = {}) {
   const rows = window.closetCsvUtils.parseCsv(text);
-  return rows.map((row, index) => csvRowToItem(row, index));
+  return rows.map((row, index) => csvRowToItem(row, index, options));
 }
 
 async function upsertItems(items) {
@@ -687,7 +771,7 @@ async function upsertItems(items) {
   }
 }
 
-function csvRowToItem(row, index) {
+function csvRowToItem(row, index, options = {}) {
   const now = new Date().toISOString();
   const name = cleanText(row["이름"]) || `이름 없는 제품 ${index + 1}`;
   const brand = cleanText(row["브랜드"]);
@@ -700,6 +784,8 @@ function csvRowToItem(row, index) {
     const value = parseNumber(row[field]);
     if (value !== null) measurements[field] = value;
   });
+
+  const tempImageUrl = options.useTempImages ? getTemporaryImageUrl(index) : "";
 
   return {
     id,
@@ -723,7 +809,7 @@ function csvRowToItem(row, index) {
     primaryImageId: null,
     remoteImages: [],
     imagesDirty: false,
-    externalImageUrl: "",
+    externalImageUrl: tempImageUrl,
     externalImageEdit: defaultImageEdit(),
     source: "csv",
     sourceIndex: index,
@@ -883,6 +969,11 @@ function renderPriceLine(item) {
 }
 
 function renderImageSlot(item, primaryImage) {
+  if (primaryImage.externalUrl && primaryImage.remoteUrl) {
+    const imageStyle = `background-image:url("${primaryImage.remoteUrl}")`;
+    return `<div class="image-slot" style="${escapeAttr(imageStyle)}"></div>`;
+  }
+
   if (primaryImage.remoteUrl) {
     return `<div class="image-slot" data-remote-item-id="${escapeAttr(item.id)}" data-remote-image-id="${escapeAttr(primaryImage.remoteId || "")}" data-remote-url="${escapeAttr(primaryImage.remoteUrl)}"></div>`;
   }
@@ -2602,11 +2693,11 @@ async function handleSyncButton() {
 }
 
 function shouldRequireAuth() {
-  return !state.session;
+  return !state.temporary && !state.session;
 }
 
 function requireAuthenticatedMutation() {
-  if (state.session) return true;
+  if (state.temporary || state.session) return true;
   showAuthDialog();
   showToast("로그인 후 사용할 수 있습니다.");
   return false;

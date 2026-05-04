@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react"
-import { CalendarIcon, ChevronLeft, Copy, ImagePlus, LinkIcon, Pencil, Plus, Save, Share2, SlidersHorizontal, Star, Trash2, X, XCircle } from "lucide-react"
+import { CalendarIcon, ChevronLeft, Copy, Home, ImagePlus, LinkIcon, MoreHorizontal, Pencil, Plus, Save, Share2, SlidersHorizontal, Star, Trash2, X, XCircle } from "lucide-react"
 import { format } from "date-fns"
 
 import { Button } from "@/components/ui/button"
@@ -601,6 +601,11 @@ export function ClosetDetailDialog() {
     setImageEditOpen(false)
   }
 
+  const closeDetailToHome = () => {
+    window.closetBridge?.closeDetail()
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }))
+  }
+
   return (
     <Dialog open={Boolean(payload)} onOpenChange={(open) => !open && window.closetBridge?.closeDetail()}>
       <DialogContent className="detail-form detail-dialog-content" showCloseButton={false}>
@@ -861,21 +866,28 @@ export function ClosetDetailDialog() {
               </div>
             </ScrollArea>
 
-            <div className="detail-actions">
-              <Button className="button danger" type="button" variant="destructive" onClick={() => window.closetBridge?.deleteSelectedItem()}>
-                <Trash2 className="size-4" />
-                삭제
+            <div className="detail-actions detail-actions-edit">
+              <Button className="button primary detail-primary-action" type="submit">
+                <Save className="size-4" />
+                저장
               </Button>
-              <div className="topbar-actions">
-                <Button className="button secondary" type="button" variant="outline" onClick={() => window.closetBridge?.shareSelectedItem()}>
-                  <Share2 className="size-4" />
-                  공유 링크
-                </Button>
-                <Button className="button primary" type="submit">
-                  <Save className="size-4" />
-                  저장
-                </Button>
-              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button aria-label="추가 작업" className="button secondary detail-more-trigger" type="button" variant="outline">
+                    <MoreHorizontal className="size-5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="detail-action-menu" side="top">
+                  <Button className="button secondary" type="button" variant="ghost" onClick={() => window.closetBridge?.shareSelectedItem()}>
+                    <Share2 className="size-4" />
+                    공유 링크
+                  </Button>
+                  <Button className="button secondary detail-danger-secondary" type="button" variant="ghost" onClick={() => window.closetBridge?.deleteSelectedItem()}>
+                    <Trash2 className="size-4" />
+                    삭제
+                  </Button>
+                </PopoverContent>
+              </Popover>
             </div>
           </form>
           ) : (
@@ -889,9 +901,12 @@ export function ClosetDetailDialog() {
                     <h2>{form.name || "새 제품"}</h2>
                   </DialogTitle>
                   <DialogDescription className="sr-only">제품 정보를 확인합니다.</DialogDescription>
-                </div>
-                <div className="topbar-actions">
-                  <Button className="button secondary" type="button" variant="outline" onClick={() => setMode("edit")}>
+	                </div>
+	                <div className="topbar-actions detail-view-header-actions">
+	                  <Button aria-label="목록으로" className="icon-button detail-home-button" type="button" variant="ghost" onClick={closeDetailToHome}>
+	                    <Home className="size-5" />
+	                  </Button>
+	                  <Button className="button secondary detail-header-edit-button" type="button" variant="outline" onClick={() => setMode("edit")}>
                     <Pencil className="size-4" />
                     편집
                   </Button>
@@ -1038,22 +1053,33 @@ export function ClosetDetailDialog() {
                 </div>
               </ScrollArea>
 
-              <div className="detail-actions">
-                <Button className="button danger" type="button" variant="destructive" onClick={() => window.closetBridge?.deleteSelectedItem()}>
-                  <Trash2 className="size-4" />
-                  삭제
+              <div className="detail-actions detail-actions-view">
+                <Button className="button primary detail-primary-action" type="button" onClick={() => setMode("edit")}>
+                  <Pencil className="size-4" />
+                  편집
                 </Button>
-                <div className="topbar-actions">
-                  <Button className="button secondary" type="button" variant="outline" onClick={() => window.closetBridge?.shareSelectedItem()}>
-                    <Share2 className="size-4" />
-                    공유 링크
-                  </Button>
-                  <Button className="button secondary" type="button" variant="outline" onClick={handleDuplicate}>
-                    <Copy className="size-4" />
-                    복제
-                  </Button>
-                </div>
-	              </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button aria-label="추가 작업" className="button secondary detail-more-trigger" type="button" variant="outline">
+                      <MoreHorizontal className="size-5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="detail-action-menu" side="top">
+                    <Button className="button secondary" type="button" variant="ghost" onClick={() => window.closetBridge?.shareSelectedItem()}>
+                      <Share2 className="size-4" />
+                      공유 링크
+                    </Button>
+                    <Button className="button secondary" type="button" variant="ghost" onClick={handleDuplicate}>
+                      <Copy className="size-4" />
+                      복제
+                    </Button>
+                    <Button className="button secondary detail-danger-secondary" type="button" variant="ghost" onClick={() => window.closetBridge?.deleteSelectedItem()}>
+                      <Trash2 className="size-4" />
+                      삭제
+                    </Button>
+                  </PopoverContent>
+                </Popover>
+		              </div>
             </div>
           )
         ) : null}

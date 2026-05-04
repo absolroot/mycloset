@@ -53,7 +53,7 @@ if (!isWindows || !hasNonAsciiPath) {
 
 const repoHash = crypto.createHash("sha256").update(repoRoot).digest("hex").slice(0, 10)
 const buildRoot = path.join(os.tmpdir(), `closet-build-${repoHash}-${process.pid}-${Date.now()}`)
-const excludedDirs = [".git", "node_modules", "dist", ".playwright-mcp", "assets\\temp"]
+const excludedDirs = [".git", "node_modules", "dist", ".playwright-mcp", "assets\\temp", "artifacts"]
 const excludedFiles = ["*.log", "*.out", "*.err"]
 
 runRobocopy([

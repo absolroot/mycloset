@@ -65,6 +65,10 @@ supabase/
 
 scripts/
   build.cjs                       Vite 빌드 후 런타임 파일 복사
+  vite-dev.cjs                    개발 서버 실행 및 로그 저장
+artifacts/
+  logs/                           로컬 개발 서버 로그
+  screenshots/                    검증용 스크린샷
 ```
 
 ## 처음 실행하기
@@ -75,6 +79,8 @@ Node 20 이상을 권장합니다.
 npm install
 npm run dev -- --host=127.0.0.1 --port=5176
 ```
+
+개발 서버 로그는 `artifacts/logs/`에 생성되며 Git에는 포함되지 않습니다.
 
 브라우저에서 엽니다.
 
