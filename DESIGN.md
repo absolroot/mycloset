@@ -27,7 +27,7 @@ Do not introduce a separate visual system for one-off elements. If a new control
 
 ## Tokens
 
-The canonical token source is `src/index.css`.
+The canonical token source is `src/styles/00-tokens.css`. `src/index.css` is only the ordered CSS manifest.
 
 - Base color: shadcn `zinc`.
 - Radius: `0.5rem`.
@@ -38,8 +38,18 @@ The canonical token source is `src/index.css`.
 - Border/input: `--border`, `--input`.
 - Focus: `--ring`.
 - Destructive: `--destructive`.
+- Theme-specific app chrome and legacy surfaces should use the same token layer, including `--sidebar`, `--image-surface`, `--overlay-muted`, `--overlay-strong`, `--positive`, and `--warning`.
 
 Avoid adding hard-coded colors unless the value represents product imagery or semantic data such as clothing color swatches.
+
+## Light and Dark Mode
+
+The app supports explicit light/dark mode through the `jaaang-theme` localStorage key. The initial HTML script in `index.html` applies `data-theme` and the `dark` class before React mounts, and React controls are implemented in `src/theme/*`.
+
+- Add theme-aware colors in `src/styles/00-tokens.css` first, then consume those tokens from React and legacy DOM styles.
+- Do not add page-local dark-mode overrides if the value can be expressed as a token.
+- Keep product image canvases and transparent image preview surfaces on `--image-surface`; this intentionally remains white so clothing assets display predictably in both themes.
+- Place global theme controls where they do not crowd core navigation: desktop uses the persistent top bar, mobile uses the My Page settings surface, and the login screen has its own compact action because the app shell is hidden there.
 
 ## Layout
 
@@ -74,7 +84,7 @@ The product detail modal is rendered in React with shadcn `Dialog`, while `asset
 
 ## Legacy DOM Styling
 
-The following legacy classes are still produced by `assets/js/app.js` and must remain styled in `src/index.css`:
+The following legacy classes are still produced by `assets/js/app.js` and must remain styled in the matching `src/styles/*` domain file:
 
 - `.button`, `.icon-button`
 - `.summary-card`
@@ -90,3 +100,17 @@ The following legacy classes are still produced by `assets/js/app.js` and must r
 React-rendered shell and modal controls should use shadcn components directly. The current filter dropdowns use shadcn `Select` with hidden native select bridges so the legacy filtering code can continue reading `.value` and `change` events without exposing browser-default selects in the UI.
 
 When replacing legacy-rendered UI with React later, migrate one area at a time and remove only the corresponding legacy CSS after verifying the old class is no longer emitted.
+
+## CSS File Structure
+
+`src/index.css` imports Tailwind and then the local CSS modules in cascade order. Do not add feature CSS directly to `src/index.css`; add it to the matching file under `src/styles/` and keep `src/styles/README.md` in sync when creating a new module.
+
+- `00-tokens.css`: Tailwind theme bridge, design tokens, and light/dark values.
+- `01-base.css`: reset, document defaults, and app shell primitives.
+- `02-auth.css`, `03-app-chrome.css`, `04-my-page.css`: top-level app surfaces.
+- `05-controls.css`: reusable buttons, fields, selects, popovers, and segmented controls.
+- `06-closet-content.css`, `07-detail.css`: closet list/card/detail surfaces.
+- `08-overlays.css`, `09-legal-footer.css`: shared overlays and secondary pages.
+- `10-responsive-core.css`, `11-mobile-navigation.css`: responsive layout and mobile app navigation.
+- `12-analysis.css`: analysis dashboard UI.
+- `13-mobile-border-fixes.css`: final mobile rendering polish overrides.

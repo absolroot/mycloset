@@ -1,0 +1,354 @@
+/* Shared buttons, form fields, selects, popovers, and segmented controls. */
+
+.button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius);
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.button.primary {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.button.secondary {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.button.secondary:hover {
+  background: var(--accent);
+}
+
+.button.danger {
+  border: 1px solid color-mix(in oklch, var(--destructive) 28%, var(--card));
+  background: color-mix(in oklch, var(--destructive) 7%, var(--card));
+  color: var(--destructive);
+}
+
+.button.full {
+  width: 100%;
+}
+
+.button.compact {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.icon-button {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  min-height: calc(100svh - var(--header-height));
+}
+
+.filters {
+  position: sticky;
+  top: var(--header-height);
+  height: calc(100svh - var(--header-height));
+  border-right: 1px solid var(--border);
+  background: var(--sidebar);
+}
+
+.filter-toggle {
+  display: none;
+}
+
+.filter-toggle-chevron {
+  margin-left: auto;
+  transition: transform 140ms ease;
+}
+
+.filters-scroll {
+  height: 100%;
+}
+
+.filters-inner {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.filter-block,
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field > span:first-child,
+.filter-label {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.filter-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.filter-separator {
+  margin: 2px 0;
+}
+
+.native-select,
+.field input,
+.field textarea,
+.field select,
+.form-section > textarea,
+.form-grid input,
+.form-grid textarea,
+.form-grid select,
+.measure-grid input,
+.image-url-row input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  outline: none;
+  padding: 9px 11px;
+  font-size: 14px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.native-select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%), linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 17px, calc(100% - 10px) 17px;
+  background-repeat: no-repeat;
+  background-size: 5px 5px;
+  padding-right: 30px;
+}
+
+.native-select-bridge {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.shadcn-select-trigger {
+  width: 100%;
+  min-height: 40px;
+  border-color: var(--input);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.detail-select-trigger,
+.date-trigger {
+  width: 100%;
+  min-height: 40px;
+  justify-content: space-between;
+  border-color: var(--input);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.shadcn-select-trigger [data-slot="select-value"],
+.detail-select-trigger [data-slot="select-value"] {
+  display: flex !important;
+  min-width: 0;
+  align-items: center;
+}
+
+.date-trigger {
+  justify-content: flex-start;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.date-control {
+  display: grid;
+  gap: 8px;
+}
+
+.date-text-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 8px;
+}
+
+.date-text-input {
+  min-height: 40px;
+}
+
+.date-picker-button {
+  width: 40px;
+  min-height: 40px;
+  border-color: var(--input);
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0;
+}
+
+.date-trigger-mobile {
+  display: none;
+}
+
+.date-trigger svg,
+.date-picker-button svg {
+  flex: 0 0 auto;
+}
+
+.shadcn-select-content {
+  z-index: 90;
+}
+
+.select-color-option {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+[data-slot="select-value"] .select-color-option {
+  display: flex;
+  width: 100%;
+  line-height: 1;
+}
+
+.calendar-popover {
+  width: auto;
+  border-color: var(--border);
+  background: var(--popover);
+  padding: 0;
+}
+
+.calendar-popover .button.full {
+  width: calc(100% - 24px);
+  margin: 0 12px 12px;
+}
+
+.field textarea,
+.form-section > textarea,
+.form-grid textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.form-section > textarea {
+  margin-top: 10px;
+}
+
+.native-select:focus,
+.field input:focus,
+.field textarea:focus,
+.form-section > textarea:focus,
+.field select:focus,
+.form-grid input:focus,
+.form-grid textarea:focus,
+.form-grid select:focus,
+.measure-grid input:focus,
+.image-url-row input:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 22%, transparent);
+}
+
+.autocomplete-shell {
+  position: relative;
+}
+
+.autocomplete-list {
+  position: absolute;
+  z-index: 95;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: var(--shadow-soft);
+  padding: 4px;
+}
+
+.autocomplete-list button {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--popover-foreground);
+  padding: 7px 9px;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.autocomplete-list button:hover,
+.autocomplete-list button.active,
+.autocomplete-list button[aria-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.segmented,
+.view-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  padding: 3px;
+}
+
+.segmented {
+  width: 100%;
+}
+
+.segment,
+.view-button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.segment.active,
+.segment[data-state="on"],
+.view-button.active,
+.view-button[data-state="on"] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}

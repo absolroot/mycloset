@@ -1,7 +1,8 @@
-import { Archive, CheckCircle2, ChevronRight, Cloud, Database, Download, FileText, Info, LogIn, LogOut, Mail, ShieldCheck, Shirt, Upload, User } from "lucide-react"
+import { Archive, CheckCircle2, ChevronRight, Cloud, Database, Download, FileText, Info, LogIn, LogOut, Mail, Settings2, ShieldCheck, Shirt, Upload, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BRAND_CONFIG } from "./brand/brandConfig"
 import { useAuthSnapshot, type AuthSnapshot } from "./closet/authBridge"
+import { ThemeToggle } from "./theme/ThemeToggle"
 
 function GoogleLogo() {
   return (
@@ -118,6 +119,17 @@ export function MyPage({ onGoCloset }: { onGoCloset: () => void }) {
               <dd>{auth.itemCount.toLocaleString("ko-KR")}개</dd>
             </div>
           </dl>
+        </div>
+
+        <div className="my-section my-theme-section">
+          <div className="my-section-heading">
+            <Settings2 className="size-4" />
+            <h3>설정</h3>
+          </div>
+          <div className="my-setting-row">
+            <span>화면 모드</span>
+            <ThemeToggle className="my-theme-toggle" />
+          </div>
         </div>
 
         <div className="my-section">

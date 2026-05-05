@@ -29,6 +29,7 @@ import { useAuthSnapshot } from "./closet/authBridge"
 import { useLegacyClosetRuntime } from "./closet/useLegacyClosetRuntime"
 import { AppFooter } from "./legal/AppFooter"
 import { LegalPage } from "./legal/LegalPage"
+import { ThemeToggle } from "./theme/ThemeToggle"
 
 const ClosetDetailDialog = lazy(() =>
   import("./ClosetDetailDialog").then((module) => ({ default: module.ClosetDetailDialog }))
@@ -165,6 +166,7 @@ function App() {
           </label>
 
 	          <div className="topbar-actions">
+            <ThemeToggle className="topbar-icon-action desktop-theme-action" />
             <Popover open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
               <PopoverTrigger asChild>
                 <Button

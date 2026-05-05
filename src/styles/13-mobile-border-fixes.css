@@ -1,0 +1,118 @@
+/* Mobile border rendering fixes and final visual polish overrides. */
+
+/* Draw rounded 1px borders with inset shadows to avoid mobile radius aliasing. */
+.button.primary,
+.button.secondary,
+.button.danger,
+.topbar-icon-action,
+.native-select,
+.field input,
+.field textarea,
+.field select,
+.form-section > textarea,
+.form-grid input,
+.form-grid textarea,
+.form-grid select,
+.measure-grid input,
+.image-url-row input,
+.search-sheet-field input,
+.shadcn-select-trigger,
+.detail-select-trigger,
+.date-trigger,
+.date-picker-button,
+.summary-card,
+.item-tile,
+.detail-cover,
+.detail-view-tags span,
+.category-grid-btn,
+.brand-filter-search,
+.brand-filter-search-skeleton,
+.filter-chip-button,
+.scroll-top-button,
+.summary-hero-card,
+.analysis-glass-card,
+.measurement-parent-tab,
+.measurement-child-tab {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.button.primary {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.button.danger,
+.detail-danger-secondary {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--destructive) 28%, var(--border));
+}
+
+.detail-danger-secondary:hover {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--destructive) 52%, var(--border));
+}
+
+.item-tile:hover,
+.item-tile.active {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--ring), var(--shadow-soft);
+}
+
+.category-grid-btn:hover,
+.summary-hero-card:hover,
+.analysis-glass-card:hover {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.category-grid-btn.active,
+.category-sheet-column button.active,
+.filter-chip-button.is-active,
+.measurement-parent-tab.is-active,
+.measurement-child-tab.is-active {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.category-sheet-column button.active {
+  box-shadow: inset 0 0 0 1px var(--border), 0 1px 2px rgb(0 0 0 / 0.05);
+}
+
+.category-sheet-children button.active {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.brand-filter-search:focus-within,
+.native-select:focus,
+.field input:focus,
+.field textarea:focus,
+.form-section > textarea:focus,
+.field select:focus,
+.form-grid input:focus,
+.form-grid textarea:focus,
+.form-grid select:focus,
+.measure-grid input:focus,
+.image-url-row input:focus,
+.search-sheet-field input:focus {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--ring), 0 0 0 3px color-mix(in oklch, var(--ring) 18%, transparent);
+}
+
+.scroll-top-button {
+  box-shadow: inset 0 0 0 1px var(--border), 0 10px 26px rgb(0 0 0 / 0.16);
+}
+
+.detail-action-menu .button {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 720px) {
+  .detail-cover {
+    box-shadow: none;
+  }
+
+  .detail-cover::after {
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border) 58%, var(--image-surface));
+  }
+}
