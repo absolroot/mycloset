@@ -1,19 +1,19 @@
-import { ShieldCheck } from "lucide-react"
+import { Info, ShieldCheck } from "lucide-react"
 import { LEGAL_DOCUMENTS, type LegalPageKind } from "./legalContent"
 
 export function LegalPage({ kind }: { kind: LegalPageKind }) {
   const document = LEGAL_DOCUMENTS[kind]
+  const Icon = kind === "about" ? Info : ShieldCheck
 
   return (
     <main className="legal-page" aria-labelledby="legalPageTitle">
       <header className="legal-hero">
         <div className="legal-hero-icon" aria-hidden="true">
-          <ShieldCheck className="size-5" />
+          <Icon className="size-5" />
         </div>
         <div>
-          <p className="eyebrow">Legal</p>
+          <p className="eyebrow">{kind === "about" ? "About" : "Legal"}</p>
           <h1 id="legalPageTitle">{document.title}</h1>
-          <p>{document.description}</p>
           <span>시행일 및 최종 업데이트: {document.updatedAt}</span>
         </div>
       </header>

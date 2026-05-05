@@ -36,12 +36,13 @@ const ClosetDetailDialog = lazy(() =>
 
 const AnalysisPage = lazy(() => import("./AnalysisPage"))
 
-type AppPage = "closet" | "analysis" | "login" | "my" | "terms" | "privacy"
+type AppPage = "closet" | "analysis" | "login" | "my" | "about" | "terms" | "privacy"
 
 function getPageFromPath(): AppPage {
   if (window.location.pathname === "/analysis") return "analysis"
   if (window.location.pathname === "/login") return "login"
   if (window.location.pathname === "/my") return "my"
+  if (window.location.pathname === "/about") return "about"
   if (window.location.pathname === "/terms") return "terms"
   if (window.location.pathname === "/privacy") return "privacy"
   return "closet"
@@ -92,11 +93,13 @@ function App() {
           ? "/login"
           : page === "my"
             ? "/my"
-            : page === "terms"
-              ? "/terms"
-              : page === "privacy"
-                ? "/privacy"
-                : "/",
+            : page === "about"
+              ? "/about"
+              : page === "terms"
+                ? "/terms"
+                : page === "privacy"
+                  ? "/privacy"
+                  : "/",
     )
     if (page === "closet") {
       window.dispatchEvent(new Event("closet:filters-change"));
@@ -112,11 +115,13 @@ function App() {
       ? "분석"
       : activePage === "my"
         ? "마이"
-        : activePage === "terms"
-          ? "이용약관"
-          : activePage === "privacy"
-            ? "개인정보처리방침"
-            : `${resultTitle} · ${snapshot.visibleCount}개`
+        : activePage === "about"
+          ? "서비스 소개"
+          : activePage === "terms"
+            ? "이용약관"
+            : activePage === "privacy"
+              ? "개인정보처리방침"
+              : `${resultTitle} · ${snapshot.visibleCount}개`
   const brandOptionRows = snapshot.loading ? 4 : Math.min(snapshot.options.brands.length, 7)
   const brandFilterStyle = {
     "--brand-section-min-height": `${Math.min(360, 128 + brandOptionRows * 38)}px`,
@@ -313,6 +318,7 @@ function App() {
         )}
 
         {activePage === "my" && <MyPage onGoCloset={() => navigateTo("closet")} />}
+        {activePage === "about" && <LegalPage kind="about" />}
         {activePage === "terms" && <LegalPage kind="terms" />}
         {activePage === "privacy" && <LegalPage kind="privacy" />}
 

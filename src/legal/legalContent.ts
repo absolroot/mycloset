@@ -1,6 +1,7 @@
+import { BRAND_CONFIG } from "../brand/brandConfig"
 import { LEGAL_CONFIG } from "./legalConfig"
 
-export type LegalPageKind = "terms" | "privacy"
+export type LegalPageKind = "about" | "terms" | "privacy"
 
 export type LegalSection = {
   title: string
@@ -11,7 +12,6 @@ export type LegalSection = {
 export type LegalDocument = {
   kind: LegalPageKind
   title: string
-  description: string
   updatedAt: string
   sections: LegalSection[]
 }
@@ -22,7 +22,6 @@ const operator = LEGAL_CONFIG.operatorName
 export const TERMS_DOCUMENT: LegalDocument = {
   kind: "terms",
   title: "이용약관",
-  description: `${service} 서비스 이용 조건과 운영 기준을 안내합니다.`,
   updatedAt: LEGAL_CONFIG.effectiveDate,
   sections: [
     {
@@ -133,7 +132,6 @@ export const TERMS_DOCUMENT: LegalDocument = {
 export const PRIVACY_DOCUMENT: LegalDocument = {
   kind: "privacy",
   title: "개인정보처리방침",
-  description: `${service}가 어떤 개인정보를 어떤 목적으로 처리하는지 안내합니다.`,
   updatedAt: LEGAL_CONFIG.effectiveDate,
   sections: [
     {
@@ -236,7 +234,61 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
   ],
 }
 
+export const ABOUT_DOCUMENT: LegalDocument = {
+  kind: "about",
+  title: `${service} 소개`,
+  updatedAt: LEGAL_CONFIG.effectiveDate,
+  sections: [
+    {
+      title: `${service}은`,
+      body: [
+        `${service}은 가지고 있는 옷을 잊지 않고 다시 꺼내 볼 수 있도록 돕는 개인 옷장 기록 서비스입니다.`,
+        `옷장 안에 있지만 잘 떠오르지 않는 옷, 언제 샀는지 기억나지 않는 옷, 입어보고 남겨둔 메모와 치수를 한 곳에 정리하는 데 집중합니다.`,
+      ],
+    },
+    {
+      title: "시작한 이유",
+      body: [
+        "옷은 사진첩, 쇼핑몰 주문 내역, 메모장, 기억 속에 흩어져 남기 쉽습니다.",
+        "자아앙은 흩어진 옷장 정보를 조용히 모아두고, 이미 가진 옷을 더 잘 기억하고 활용하기 위해 만들었습니다.",
+      ],
+    },
+    {
+      title: "할 수 있는 일",
+      list: [
+        "의류, 신발, 가방, 악세사리 등 개인 소장품을 카테고리별로 기록합니다.",
+        "제품명, 브랜드, 색상, 가격, 구매일, 보유 상태, 평점, 메모를 저장합니다.",
+        "사진과 치수, 이미지 편집 정보를 함께 남겨 나중에 다시 확인할 수 있습니다.",
+        "검색, 필터, 정렬, 분석 화면으로 내가 가진 옷장을 살펴볼 수 있습니다.",
+        "CSV, JSON, ZIP 내보내기와 가져오기로 데이터를 옮기거나 백업할 수 있습니다.",
+      ],
+    },
+    {
+      title: "사용 방식",
+      list: [
+        "게스트 모드는 로그인 없이 현재 브라우저에만 데이터를 저장합니다.",
+        "Google 계정으로 로그인하면 Supabase 동기화를 통해 같은 계정의 옷장을 이어서 사용할 수 있습니다.",
+        "중요한 옷장 기록은 내보내기 기능으로 별도 백업하는 것을 권장합니다.",
+      ],
+    },
+    {
+      title: "지향하는 것",
+      body: [
+        `${BRAND_CONFIG.tagline}.`,
+        "자아앙은 쇼핑을 더 많이 하게 만드는 서비스보다, 이미 가진 옷을 또렷하게 기억하고 정리하는 도구에 가깝게 남고자 합니다.",
+      ],
+    },
+    {
+      title: "문의",
+      body: [
+        `서비스에 대한 제안이나 문의는 ${LEGAL_CONFIG.contactLabel}을 통해 남길 수 있습니다.`,
+      ],
+    },
+  ],
+}
+
 export const LEGAL_DOCUMENTS: Record<LegalPageKind, LegalDocument> = {
+  about: ABOUT_DOCUMENT,
   terms: TERMS_DOCUMENT,
   privacy: PRIVACY_DOCUMENT,
 }

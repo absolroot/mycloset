@@ -1,4 +1,4 @@
-import { Archive, CheckCircle2, ChevronRight, Cloud, Database, Download, FileText, LogIn, LogOut, Mail, ShieldCheck, Shirt, Upload, User } from "lucide-react"
+import { Archive, CheckCircle2, ChevronRight, Cloud, Database, Download, FileText, Info, LogIn, LogOut, Mail, ShieldCheck, Shirt, Upload, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BRAND_CONFIG } from "./brand/brandConfig"
 import { useAuthSnapshot, type AuthSnapshot } from "./closet/authBridge"
@@ -168,6 +168,11 @@ export function MyPage({ onGoCloset }: { onGoCloset: () => void }) {
             <h3>서비스 이용정보</h3>
           </div>
           <div className="my-menu-list my-legal-list">
+            <a href="/about">
+              <Info className="size-4" />
+              <span>서비스 소개</span>
+              <ChevronRight className="size-4 my-menu-chevron" />
+            </a>
             <a href="/terms">
               <FileText className="size-4" />
               <span>이용약관</span>

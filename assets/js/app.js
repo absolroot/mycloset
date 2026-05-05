@@ -11,6 +11,7 @@ const SIGNED_IMAGE_URL_MAX_AGE_MS = 45 * 60 * 1000;
 const SYNC_CATEGORY_ROWS = false;
 const HIDDEN_FILTER_COLOR_OPTIONS = new Set(["블루", "네이비", "카키", "와인"]);
 const DEFAULT_COLOR_OPTIONS = window.closetFormatUtils.DEFAULT_COLOR_OPTIONS;
+const PUBLIC_INFORMATION_PATHS = new Set(["/about", "/terms", "/privacy"]);
 const {
   MEASURE_FIELDS,
   MEASUREMENT_BY_LABEL,
@@ -178,6 +179,14 @@ async function init() {
     await initSupabase();
   } else {
     updateSyncButton();
+  }
+
+  if (isPublicInformationPath()) {
+    state.items = [];
+    state.selectedId = null;
+    state.loading = false;
+    render();
+    return;
   }
 
   if (shouldRequireAuth()) {
@@ -399,7 +408,9 @@ async function startTemporarySession(options = {}) {
 
   state.loading = false;
   render();
-  navigateToAppRoot({ replace: true });
+  if (!isPublicInformationPath()) {
+    navigateToAppRoot({ replace: true });
+  }
   if (!options.silent) showToast("게스트 모드가 시작되었습니다. 데이터는 이 기기에만 저장됩니다.");
 }
 
@@ -663,6 +674,15 @@ async function importDefaultCsv(options = {}) {
   } catch (error) {
     console.warn(error);
     if (!options.silent) showToast("CSV 자동 가져오기에 실패했습니다. 파일 선택으로 가져올 수 있습니다.");
+  }
+}
+
+async function upsertItems(items) {
+  for (const item of items) {
+    const normalized = normalizeItemData(item);
+    const existing = await dbGet("items", normalized.id);
+    const merged = existing ? mergeImportedItem(existing, normalized) : normalized;
+    await dbPut("items", normalizeItemData(merged));
   }
 }
 
@@ -1937,7 +1957,7 @@ async function handleSyncButton() {
 }
 
 function shouldRequireAuth() {
-  return !state.temporary && !state.session;
+  return !isPublicInformationPath() && !state.temporary && !state.session;
 }
 
 function requireAuthenticatedMutation() {
@@ -1967,6 +1987,10 @@ function navigateToAppRoot(options = {}) {
   const method = options.replace ? "replaceState" : "pushState";
   window.history[method]({}, "", "/");
   window.dispatchEvent(new Event("popstate"));
+}
+
+function isPublicInformationPath(pathname = window.location.pathname) {
+  return PUBLIC_INFORMATION_PATHS.has(pathname);
 }
 
 async function resumeAuthenticatedSession() {
