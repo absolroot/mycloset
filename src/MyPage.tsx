@@ -1,5 +1,6 @@
 import { Archive, CheckCircle2, ChevronRight, Cloud, Database, Download, FileText, LogIn, LogOut, Mail, ShieldCheck, Shirt, Upload, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { BRAND_CONFIG } from "./brand/brandConfig"
 import { useAuthSnapshot, type AuthSnapshot } from "./closet/authBridge"
 
 function GoogleLogo() {
@@ -33,7 +34,7 @@ function getStatusCopy(auth: AuthSnapshot) {
   return {
     eyebrow: "로그아웃 상태",
     title: "로그인이 필요합니다",
-    description: "Google 계정으로 로그인하면 자아앙을 이어서 사용할 수 있습니다.",
+    description: `Google 계정으로 로그인하면 ${BRAND_CONFIG.serviceName}을 이어서 사용할 수 있습니다.`,
   }
 }
 

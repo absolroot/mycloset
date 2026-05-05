@@ -22,6 +22,7 @@ import {
   TopCategoryNav,
 } from "./closet/FilterControls"
 import { FILTER_TABS, SORT_OPTIONS, type FilterKey } from "./closet/filterTypes"
+import { BRAND_CONFIG } from "./brand/brandConfig"
 import { LoginPage } from "./LoginPage"
 import { MyPage } from "./MyPage"
 import { useAuthSnapshot } from "./closet/authBridge"
@@ -141,7 +142,7 @@ function App() {
 		                window.scrollTo({ top: 0, behavior: "smooth" })
 		              }}
 		            >
-		              자아앙
+		              {BRAND_CONFIG.serviceName}
 		            </button>
 			            <span className="mobile-topbar-context">{topbarContext}</span>
 		          </div>

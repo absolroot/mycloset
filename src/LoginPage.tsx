@@ -1,5 +1,6 @@
 import { ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { BRAND_CONFIG } from "./brand/brandConfig"
 import { AppFooter } from "./legal/AppFooter"
 import appIconUrl from "../assets/icon.svg?url"
 
@@ -23,8 +24,8 @@ export function LoginPage() {
         </div>
 
         <div className="login-copy">
-          <p className="login-eyebrow">나의 작은 옷장</p>
-          <h1 id="loginTitle">자아앙</h1>
+          <p className="login-eyebrow">{BRAND_CONFIG.tagline}</p>
+          <h1 id="loginTitle">{BRAND_CONFIG.serviceName}</h1>
           <p>Google 계정으로 로그인하면 같은 옷장을 이어서 사용할 수 있습니다.</p>
         </div>
 
