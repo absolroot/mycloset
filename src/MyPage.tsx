@@ -19,7 +19,7 @@ function getStatusCopy(auth: AuthSnapshot) {
     return {
       eyebrow: "Google 로그인",
       title: auth.displayName || auth.email || "로그인된 계정",
-      description: "Supabase 동기화로 여러 기기에서 같은 옷장을 사용할 수 있습니다.",
+      description: "DB 동기화로 여러 기기에서 같은 옷장을 사용할 수 있습니다.",
     }
   }
 
@@ -101,7 +101,7 @@ export function MyPage({ onGoCloset }: { onGoCloset: () => void }) {
           <dl className="my-status-list">
             <div>
               <dt>저장 방식</dt>
-              <dd>{isGuest ? "게스트 로컬 저장" : isSignedIn ? "Supabase 계정 동기화" : "로그인 필요"}</dd>
+              <dd>{isGuest ? "게스트 로컬 저장" : isSignedIn ? "계정 DB 동기화" : "로그인 필요"}</dd>
             </div>
             <div>
               <dt>동기화</dt>

@@ -1,4 +1,3 @@
-import { BRAND_CONFIG } from "../brand/brandConfig"
 import { LEGAL_CONFIG } from "./legalConfig"
 
 export type LegalPageKind = "about" | "terms" | "privacy"
@@ -267,15 +266,8 @@ export const ABOUT_DOCUMENT: LegalDocument = {
       title: "사용 방식",
       list: [
         "게스트 모드는 로그인 없이 현재 브라우저에만 데이터를 저장합니다.",
-        "Google 계정으로 로그인하면 Supabase 동기화를 통해 같은 계정의 옷장을 이어서 사용할 수 있습니다.",
+        "Google 계정으로 로그인하면 DB 동기화를 통해 같은 계정의 옷장을 이어서 사용할 수 있습니다.",
         "중요한 옷장 기록은 내보내기 기능으로 별도 백업하는 것을 권장합니다.",
-      ],
-    },
-    {
-      title: "지향하는 것",
-      body: [
-        `${BRAND_CONFIG.tagline}.`,
-        "자아앙은 쇼핑을 더 많이 하게 만드는 서비스보다, 이미 가진 옷을 또렷하게 기억하고 정리하는 도구에 가깝게 남고자 합니다.",
       ],
     },
     {
