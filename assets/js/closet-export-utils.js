@@ -35,20 +35,6 @@
     };
   }
 
-  function encodeSharePayload(payload) {
-    const json = JSON.stringify(payload);
-    return btoa(unescape(encodeURIComponent(json)));
-  }
-
-  function decodeSharePayload(encoded) {
-    try {
-      return JSON.parse(decodeURIComponent(escape(atob(encoded))));
-    } catch (error) {
-      console.warn(error);
-      return null;
-    }
-  }
-
   async function fetchBackupImageBlob(url) {
     const response = await fetch(url, { mode: "cors" });
     if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
@@ -181,9 +167,7 @@
   window.closetExportUtils = {
     backupImagePath,
     createZipBlob,
-    decodeSharePayload,
     downloadBlob,
-    encodeSharePayload,
     fetchBackupImageBlob,
     sanitizeItemForExport
   };

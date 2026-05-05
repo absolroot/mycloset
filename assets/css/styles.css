@@ -85,8 +85,7 @@ a {
   backdrop-filter: blur(18px);
 }
 
-.topbar h1,
-.share-header h1 {
+.topbar h1 {
   margin: 0;
   font-size: 28px;
   line-height: 1.1;
@@ -902,25 +901,6 @@ a {
 .toast.show {
   opacity: 1;
   transform: translate(-50%, 0);
-}
-
-.share-view {
-  min-height: 100svh;
-  padding: 28px;
-  background: var(--bg);
-}
-
-.share-header {
-  max-width: 980px;
-  margin: 0 auto 20px;
-}
-
-.share-grid {
-  display: grid;
-  max-width: 980px;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-  margin: 0 auto;
 }
 
 @media (max-width: 1180px) {

@@ -1,12 +1,20 @@
 import { useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
+import backupUtilsUrl from "../../assets/js/closet-backup-utils.js?url"
 import categoryUtilsUrl from "../../assets/js/closet-category-utils.js?url"
 import csvUtilsUrl from "../../assets/js/closet-csv-utils.js?url"
 import exportUtilsUrl from "../../assets/js/closet-export-utils.js?url"
 import filterUtilsUrl from "../../assets/js/closet-filter-utils.js?url"
+import formUtilsUrl from "../../assets/js/closet-form-utils.js?url"
 import formatUtilsUrl from "../../assets/js/closet-format-utils.js?url"
 import imageUtilsUrl from "../../assets/js/closet-image-utils.js?url"
+import imageProviderUtilsUrl from "../../assets/js/closet-image-provider-utils.js?url"
+import imageStateUtilsUrl from "../../assets/js/closet-image-state-utils.js?url"
+import itemUtilsUrl from "../../assets/js/closet-item-utils.js?url"
 import measurementUtilsUrl from "../../assets/js/closet-measurement-utils.js?url"
+import renderUtilsUrl from "../../assets/js/closet-render-utils.js?url"
+import storageUtilsUrl from "../../assets/js/closet-storage-utils.js?url"
+import supabaseUtilsUrl from "../../assets/js/closet-supabase-utils.js?url"
 import legacyAppUrl from "../../assets/js/app.js?url"
 
 const tempImageModules = import.meta.glob("../../assets/temp/*.{avif,gif,jpeg,jpg,png,webp}", {
@@ -23,6 +31,11 @@ declare global {
   interface Window {
     __closetLegacyLoaded?: boolean
     WARDROBE_CONFIG?: {
+      imageStorage?: {
+        bucket?: string
+        provider?: string
+        signedUrlExpiresInSeconds?: number
+      }
       supabaseUrl?: string
       supabaseAnonKey?: string
     }
@@ -39,6 +52,11 @@ export function useLegacyClosetRuntime() {
     window.WARDROBE_TEMP_IMAGE_URLS = tempImageUrls
 
     const envConfig = {
+      imageStorage: {
+        provider: import.meta.env.VITE_IMAGE_STORAGE_PROVIDER,
+        bucket: import.meta.env.VITE_IMAGE_STORAGE_BUCKET,
+        signedUrlExpiresInSeconds: Number(import.meta.env.VITE_SIGNED_IMAGE_URL_EXPIRES_IN_SECONDS || 3600),
+      },
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
       supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
     }
@@ -48,9 +66,17 @@ export function useLegacyClosetRuntime() {
       { src: csvUtilsUrl, name: "closetCsvUtils" },
       { src: categoryUtilsUrl, name: "closetCategoryUtils" },
       { src: filterUtilsUrl, name: "closetFilterUtils" },
+      { src: formUtilsUrl, name: "closetFormUtils" },
       { src: imageUtilsUrl, name: "closetImageUtils" },
+      { src: imageProviderUtilsUrl, name: "closetImageProviderUtils" },
+      { src: imageStateUtilsUrl, name: "closetImageStateUtils" },
       { src: measurementUtilsUrl, name: "closetMeasurementUtils" },
+      { src: itemUtilsUrl, name: "closetItemUtils" },
+      { src: renderUtilsUrl, name: "closetRenderUtils" },
+      { src: storageUtilsUrl, name: "closetStorageUtils" },
+      { src: supabaseUtilsUrl, name: "closetSupabaseUtils" },
       { src: exportUtilsUrl, name: "closetExportUtils" },
+      { src: backupUtilsUrl, name: "closetBackupUtils" },
       { src: legacyAppUrl, name: "legacyCloset" },
     ]
 

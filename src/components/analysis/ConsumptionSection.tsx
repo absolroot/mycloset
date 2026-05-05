@@ -67,11 +67,11 @@ export function ConsumptionSection({ items }: { items: ClosetItem[] }) {
 
   const getImageUrl = (item: ClosetItem) => {
     if (item.primaryImageId && item.remoteImages) {
-       const img = item.remoteImages.find(i => i?.url?.includes(item.primaryImageId!));
-       if (img) return img.signedUrl || img.url;
+       const img = item.remoteImages.find(i => i?.id === item.primaryImageId || i?.url?.includes(item.primaryImageId!));
+       if (img) return img.signedUrl || img.publicUrl || img.url || "";
     }
     if (item.remoteImages && item.remoteImages.length > 0) {
-      return item.remoteImages[0].signedUrl || item.remoteImages[0].url;
+      return item.remoteImages[0].signedUrl || item.remoteImages[0].publicUrl || item.remoteImages[0].url || "";
     }
     return item.externalImageUrl;
   };

@@ -1,6 +1,8 @@
 "use strict";
 
 (function exposeClosetFilterUtils() {
+  const cleanText = window.closetFormatUtils?.cleanText || ((value) => String(value ?? "").trim());
+
   const PRICE_RANGE_OPTIONS = [
     { id: "none", label: "0원" },
     { id: "under-50000", label: "5만원 이하" },

@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react"
-import { CalendarIcon, ChevronLeft, Copy, Home, ImagePlus, LinkIcon, MoreHorizontal, Pencil, Plus, Save, Share2, SlidersHorizontal, Star, Trash2, X, XCircle } from "lucide-react"
+import { CalendarIcon, ChevronLeft, Copy, Home, ImagePlus, LinkIcon, MoreHorizontal, Pencil, Plus, Save, SlidersHorizontal, Star, Trash2, X, XCircle } from "lucide-react"
 import { format } from "date-fns"
 
 import { Button } from "@/components/ui/button"
@@ -31,7 +31,9 @@ type PrimaryImage = {
   localId: string
   remoteId?: string
   remoteUrl: string
+  storageBucket?: string
   storagePath?: string
+  storageProvider?: string
 }
 
 type ClosetItem = {
@@ -119,7 +121,6 @@ type ClosetBridge = {
   saveSelectedItemRating: (rating: number | null) => Promise<unknown>
   saveSelectedItem: (item: DetailSavePayload) => Promise<unknown>
   setFilters?: (nextPartialFilters: unknown) => void
-  shareSelectedItem: () => Promise<unknown> | void
   subscribeFilters?: (listener: (snapshot: unknown) => void) => () => void
   uploadImageFile: (file: File, item?: DetailSavePayload) => Promise<unknown>
 }
@@ -878,10 +879,6 @@ export function ClosetDetailDialog() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="detail-action-menu" side="top">
-                  <Button className="button secondary" type="button" variant="ghost" onClick={() => window.closetBridge?.shareSelectedItem()}>
-                    <Share2 className="size-4" />
-                    공유 링크
-                  </Button>
                   <Button className="button secondary detail-danger-secondary" type="button" variant="ghost" onClick={() => window.closetBridge?.deleteSelectedItem()}>
                     <Trash2 className="size-4" />
                     삭제
@@ -1053,7 +1050,20 @@ export function ClosetDetailDialog() {
                 </div>
               </ScrollArea>
 
-              <div className="detail-actions detail-actions-view">
+              <div className="detail-actions detail-actions-view detail-actions-view-desktop">
+                <Button className="button danger" type="button" variant="destructive" onClick={() => window.closetBridge?.deleteSelectedItem()}>
+                  <Trash2 className="size-4" />
+                  삭제
+                </Button>
+                <div className="topbar-actions">
+                  <Button className="button secondary" type="button" variant="outline" onClick={handleDuplicate}>
+                    <Copy className="size-4" />
+                    복제
+                  </Button>
+                </div>
+              </div>
+
+              <div className="detail-actions detail-actions-view detail-actions-view-mobile">
                 <Button className="button primary detail-primary-action" type="button" onClick={() => setMode("edit")}>
                   <Pencil className="size-4" />
                   편집
@@ -1065,10 +1075,6 @@ export function ClosetDetailDialog() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="end" className="detail-action-menu" side="top">
-                    <Button className="button secondary" type="button" variant="ghost" onClick={() => window.closetBridge?.shareSelectedItem()}>
-                      <Share2 className="size-4" />
-                      공유 링크
-                    </Button>
                     <Button className="button secondary" type="button" variant="ghost" onClick={handleDuplicate}>
                       <Copy className="size-4" />
                       복제

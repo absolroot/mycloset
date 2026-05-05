@@ -11,7 +11,7 @@ export function TopCategoryNav({
   setActivePage,
 }: {
   snapshot: FilterSnapshot
-  activePage: "closet" | "analysis"
+  activePage: "closet" | "analysis" | "my"
   setActivePage: (page: "closet" | "analysis") => void
 }) {
   return (
@@ -117,14 +117,16 @@ export function FilterSection({
   children,
   className = "",
   scroll = false,
+  style,
 }: {
   title: string
   children: ReactNode
   className?: string
   scroll?: boolean
+  style?: CSSProperties
 }) {
   return (
-    <section className={`rail-filter-section ${scroll ? "is-scrollable" : ""} ${className}`}>
+    <section className={`rail-filter-section ${scroll ? "is-scrollable" : ""} ${className}`} style={style}>
       <h3>{title}</h3>
       {children}
     </section>

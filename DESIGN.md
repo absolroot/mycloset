@@ -1,8 +1,8 @@
-# Closet Design System
+# 자아앙 Design System
 
 ## Direction
 
-Closet is an operational wardrobe manager, not a landing page. The interface should feel quiet, dense, and consistent: fast scanning, clear editing, and predictable controls across desktop and mobile.
+자아앙 is an operational wardrobe manager, not a landing page. The English brand spelling is "Jaaang" and the brand line is "나의 작은 옷장"; the interface should feel quiet, dense, and consistent: fast scanning, clear editing, and predictable controls across desktop and mobile.
 
 The app now uses a Vite React shell with shadcn/ui as the component baseline. Existing wardrobe data logic still renders some dynamic DOM directly, so those legacy class names must be styled from the same shadcn token set in `src/index.css`.
 

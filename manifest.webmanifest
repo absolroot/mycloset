@@ -1,7 +1,7 @@
 {
-  "name": "Closet",
-  "short_name": "Closet",
-  "description": "PC와 모바일에서 쓰는 개인 옷장 관리 앱",
+  "name": "자아앙",
+  "short_name": "자아앙",
+  "description": "나의 작은 옷장. 개인 옷장 관리 앱",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#ffffff",

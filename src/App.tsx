@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState, useEffect } from "react"
-import { Archive, ArrowUp, Database, Download, Grid2X2, Home, List, LogOut, Menu, MoreHorizontal, PieChart, Plus, Search, Upload, User, X } from "lucide-react"
+import { lazy, Suspense, useState, useEffect, type CSSProperties } from "react"
+import { ArrowUp, Grid2X2, Home, List, LogOut, Menu, PieChart, Plus, Search, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -22,7 +22,12 @@ import {
   TopCategoryNav,
 } from "./closet/FilterControls"
 import { FILTER_TABS, SORT_OPTIONS, type FilterKey } from "./closet/filterTypes"
+import { LoginPage } from "./LoginPage"
+import { MyPage } from "./MyPage"
+import { useAuthSnapshot } from "./closet/authBridge"
 import { useLegacyClosetRuntime } from "./closet/useLegacyClosetRuntime"
+import { AppFooter } from "./legal/AppFooter"
+import { LegalPage } from "./legal/LegalPage"
 
 const ClosetDetailDialog = lazy(() =>
   import("./ClosetDetailDialog").then((module) => ({ default: module.ClosetDetailDialog }))
@@ -30,14 +35,25 @@ const ClosetDetailDialog = lazy(() =>
 
 const AnalysisPage = lazy(() => import("./AnalysisPage"))
 
+type AppPage = "closet" | "analysis" | "login" | "my" | "terms" | "privacy"
+
+function getPageFromPath(): AppPage {
+  if (window.location.pathname === "/analysis") return "analysis"
+  if (window.location.pathname === "/login") return "login"
+  if (window.location.pathname === "/my") return "my"
+  if (window.location.pathname === "/terms") return "terms"
+  if (window.location.pathname === "/privacy") return "privacy"
+  return "closet"
+}
+
 function App() {
   useLegacyClosetRuntime()
 
   const snapshot = useFilterSnapshot()
-  const [activePage, setActivePage] = useState<"closet" | "analysis">(() => {
-    return window.location.pathname === "/analysis" ? "analysis" : "closet"
-  })
+  const auth = useAuthSnapshot()
+  const [activePage, setActivePage] = useState<AppPage>(() => getPageFromPath())
   const [categorySheetOpen, setCategorySheetOpen] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [activeSheetTab, setActiveSheetTab] = useState<FilterKey>("colors")
@@ -46,9 +62,9 @@ function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      const isAnalysis = window.location.pathname === "/analysis";
-      setActivePage(isAnalysis ? "analysis" : "closet");
-      if (!isAnalysis) {
+      const page = getPageFromPath()
+      setActivePage(page)
+      if (page === "closet") {
         window.dispatchEvent(new Event("closet:filters-change"));
       }
     }
@@ -63,10 +79,24 @@ function App() {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  const navigateTo = (page: "closet" | "analysis") => {
+  const navigateTo = (page: AppPage) => {
     if (activePage === page) return
     setActivePage(page)
-    window.history.pushState({}, "", page === "analysis" ? "/analysis" : "/")
+    window.history.pushState(
+      {},
+      "",
+      page === "analysis"
+        ? "/analysis"
+        : page === "login"
+          ? "/login"
+          : page === "my"
+            ? "/my"
+            : page === "terms"
+              ? "/terms"
+              : page === "privacy"
+                ? "/privacy"
+                : "/",
+    )
     if (page === "closet") {
       window.dispatchEvent(new Event("closet:filters-change"));
     }
@@ -74,8 +104,22 @@ function App() {
 
   const selectedParentLabel = snapshot.filters.parentCategory === "all" ? "전체" : snapshot.filters.parentCategory
   const selectedChildLabel = snapshot.filters.childCategory === "all" ? "전체" : snapshot.filters.childCategory
-  const resultTitle = selectedChildLabel === "전체" ? (selectedParentLabel === "전체" ? "제품" : selectedParentLabel) : selectedChildLabel
-
+  const resultTitle = selectedChildLabel === "전체" ? selectedParentLabel : selectedChildLabel
+  const navigationPage: "closet" | "analysis" | "my" = activePage === "analysis" || activePage === "my" ? activePage : "closet"
+  const topbarContext =
+    activePage === "analysis"
+      ? "분석"
+      : activePage === "my"
+        ? "마이"
+        : activePage === "terms"
+          ? "이용약관"
+          : activePage === "privacy"
+            ? "개인정보처리방침"
+            : `${resultTitle} · ${snapshot.visibleCount}개`
+  const brandOptionRows = snapshot.loading ? 4 : Math.min(snapshot.options.brands.length, 7)
+  const brandFilterStyle = {
+    "--brand-section-min-height": `${Math.min(360, 128 + brandOptionRows * 38)}px`,
+  } as CSSProperties
   const openSheet = (tab: FilterKey) => {
     setActiveSheetTab(tab)
     setSheetOpen(true)
@@ -83,21 +127,25 @@ function App() {
 
   return (
     <>
-      <section id="shareView" className="share-view" hidden>
-        <header className="share-header">
-          <p className="eyebrow">Shared Closet</p>
-          <h1 id="shareTitle">공유된 옷장</h1>
-        </header>
-        <main id="shareItems" className="share-grid" />
-      </section>
+      {activePage === "login" ? <LoginPage /> : null}
 
-      <div id="appShell" className="app-shell">
+      <div id="appShell" className="app-shell" hidden={activePage === "login"}>
 		        <header className="topbar">
 		          <div className="topbar-title">
-		            <h1>옷장</h1>
-		            <span className="mobile-topbar-context">{activePage === "analysis" ? "분석" : `${resultTitle} · ${snapshot.visibleCount}개`}</span>
+		            <button
+		              className="topbar-logo"
+		              type="button"
+		              aria-label="홈으로 이동"
+		              onClick={() => {
+		                navigateTo("closet")
+		                window.scrollTo({ top: 0, behavior: "smooth" })
+		              }}
+		            >
+		              자아앙
+		            </button>
+			            <span className="mobile-topbar-context">{topbarContext}</span>
 		          </div>
-          <TopCategoryNav snapshot={snapshot} activePage={activePage} setActivePage={navigateTo} />
+          <TopCategoryNav snapshot={snapshot} activePage={navigationPage} setActivePage={navigateTo} />
           
           <label className="topbar-search desktop-only-search">
             <Search className="size-4" />
@@ -110,76 +158,36 @@ function App() {
             />
           </label>
 
-          <div className="topbar-actions">
-            <Button
-              id="logoutButton"
-              className="topbar-icon-action auth-logout-button"
-              data-action="logout"
-              type="button"
-              variant="outline"
-              aria-label="로그아웃"
-              title="로그아웃"
-              hidden
-            >
-              <LogOut className="size-4" />
-            </Button>
-            <Popover>
+	          <div className="topbar-actions">
+            <Popover open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
               <PopoverTrigger asChild>
-                <Button className="topbar-icon-action topbar-file-action" type="button" variant="outline" aria-label="가져오기">
-                  <Upload className="size-4" />
+                <Button
+                  className={`topbar-icon-action desktop-user-action ${activePage === "my" ? "active" : ""}`}
+                  type="button"
+                  variant="outline"
+                  aria-label="계정 메뉴"
+                  title="계정 메뉴"
+                >
+                  <User className="size-4" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="topbar-action-menu" align="end">
-                <button data-action="import-csv" type="button">
-                  <Upload className="size-4" />
-                  CSV 가져오기
+              <PopoverContent className="topbar-action-menu profile-action-menu" align="end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileMenuOpen(false)
+                    navigateTo("my")
+                  }}
+                >
+                  <User className="size-4" />
+                  마이페이지
                 </button>
-              </PopoverContent>
-            </Popover>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button className="topbar-icon-action topbar-file-action" type="button" variant="outline" aria-label="내보내기">
-                  <Download className="size-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="topbar-action-menu" align="end">
-                <button data-action="export-csv" type="button">
-                  <Download className="size-4" />
-                  CSV 내보내기
-                </button>
-                <button data-action="export-json" type="button">
-                  <Database className="size-4" />
-                  JSON 백업
-                </button>
-                <button data-action="export-zip" type="button">
-                  <Archive className="size-4" />
-                  이미지 포함 ZIP 백업
-                </button>
-              </PopoverContent>
-            </Popover>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button className="topbar-icon-action mobile-topbar-more" type="button" variant="outline" aria-label="더보기">
-                  <MoreHorizontal className="size-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="topbar-action-menu mobile-more-menu" align="end">
-                <button data-action="import-csv" type="button">
-                  <Upload className="size-4" />
-                  CSV 가져오기
-                </button>
-                <button data-action="export-csv" type="button">
-                  <Download className="size-4" />
-                  CSV 내보내기
-                </button>
-                <button data-action="export-json" type="button">
-                  <Database className="size-4" />
-                  JSON 백업
-                </button>
-                <button data-action="export-zip" type="button">
-                  <Archive className="size-4" />
-                  이미지 포함 ZIP 백업
-                </button>
+                {auth.status === "signed-in" ? (
+                  <button data-action="logout" type="button" onClick={() => setProfileMenuOpen(false)}>
+                    <LogOut className="size-4" />
+                    로그아웃
+                  </button>
+                ) : null}
               </PopoverContent>
             </Popover>
             <Button className="button primary" data-action="new-item" type="button" aria-label="새 제품">
@@ -198,6 +206,14 @@ function App() {
                 <div className="rail-section-heading">
                   <span>필터</span>
                 </div>
+                <FilterSection title="상태">
+                  <OptionList
+                    className="two-column-option-list"
+                    values={snapshot.options.owned}
+                    selected={snapshot.filters.owned}
+                    onToggle={(value) => toggleFilterValue("owned", value, snapshot)}
+                  />
+                </FilterSection>
                 <FilterSection title="색상">
                   <ColorOptionGrid snapshot={snapshot} compact={false} />
                 </FilterSection>
@@ -208,15 +224,12 @@ function App() {
                     onToggle={(value) => toggleFilterValue("priceRanges", value, snapshot)}
                   />
                 </FilterSection>
-                <FilterSection title="상태">
-                  <OptionList
-                    className="two-column-option-list"
-                    values={snapshot.options.owned}
-                    selected={snapshot.filters.owned}
-                    onToggle={(value) => toggleFilterValue("owned", value, snapshot)}
-                  />
-                </FilterSection>
-                <FilterSection title="브랜드" className="brand-filter-section" scroll>
+                <FilterSection
+                  title="브랜드"
+                  className="brand-filter-section"
+                  scroll
+                  style={brandFilterStyle}
+                >
                   <SheetFilterPanel tab="brands" snapshot={snapshot} />
                 </FilterSection>
                 <FilterSection title="평점" className="rating-filter-section">
@@ -297,6 +310,12 @@ function App() {
             <AnalysisPage />
           </Suspense>
         )}
+
+        {activePage === "my" && <MyPage onGoCloset={() => navigateTo("closet")} />}
+        {activePage === "terms" && <LegalPage kind="terms" />}
+        {activePage === "privacy" && <LegalPage kind="privacy" />}
+
+        <AppFooter />
       </div>
 
       <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -422,34 +441,10 @@ function App() {
         <ClosetDetailDialog />
       </Suspense>
 
-      <dialog id="authDialog" className="dialog">
-        <form id="authForm" method="dialog">
-          <header className="dialog-header">
-            <h2>Supabase 동기화</h2>
-            <Button
-              aria-label="닫기"
-              className="icon-button"
-              type="button"
-              variant="ghost"
-              onClick={(event) => event.currentTarget.closest("dialog")?.close()}
-            >
-              <X className="size-5" />
-            </Button>
-          </header>
-          <p className="dialog-copy">Google 계정으로 로그인하면 PC와 모바일에서 같은 옷장을 사용할 수 있습니다.</p>
-          <Button className="button secondary full" data-action="start-temporary" type="button" variant="outline">
-            임시 테스트 모드로 보기
-          </Button>
-          <Button className="button primary full" type="submit">
-            Google로 계속하기
-          </Button>
-        </form>
-      </dialog>
-
       <dialog id="profileDialog" className="dialog">
         <form method="dialog">
           <header className="dialog-header">
-            <h2>임시 계정</h2>
+            <h2>게스트 모드</h2>
             <Button
               aria-label="닫기"
               className="icon-button"
@@ -460,7 +455,7 @@ function App() {
               <X className="size-5" />
             </Button>
           </header>
-          <p className="dialog-copy">CSV와 assets/temp 이미지로 만든 로컬 테스트 계정입니다. 실제 Supabase 계정과 동기화하지 않습니다.</p>
+          <p className="dialog-copy">이 기기의 브라우저에만 저장되는 로컬 옷장입니다. Supabase와 동기화하지 않습니다.</p>
           <Button className="button secondary full" data-action="exit-temporary" type="button" variant="outline">
             로그인 모드로 돌아가기
           </Button>
@@ -469,7 +464,7 @@ function App() {
 
       <div id="toast" className="toast" role="status" aria-live="polite" />
 
-      {activePage === "closet" && showScrollTop ? (
+      {activePage !== "login" && showScrollTop ? (
         <Button
           aria-label="맨 위로"
           className="scroll-top-button"
@@ -481,6 +476,7 @@ function App() {
         </Button>
       ) : null}
 
+      {activePage !== "login" ? (
       <nav className="mobile-bottom-nav">
         <button className={`nav-item ${activePage === "closet" ? "active" : ""}`} type="button" onClick={() => {
           navigateTo("closet");
@@ -510,15 +506,15 @@ function App() {
           <PieChart className="size-6" />
           <span>분석</span>
         </button>
-        <button className="nav-item" type="button" onClick={() => {
-          const temporary = window.localStorage.getItem("closet-temporary-mode") === "1";
-          const dialog = document.getElementById(temporary ? "profileDialog" : "authDialog") as HTMLDialogElement;
-          dialog?.showModal();
+        <button className={`nav-item ${activePage === "my" ? "active" : ""}`} type="button" onClick={() => {
+          navigateTo("my");
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         }}>
           <User className="size-6" />
           <span>마이</span>
         </button>
       </nav>
+      ) : null}
     </>
   )
 }

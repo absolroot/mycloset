@@ -14,7 +14,16 @@ export interface ClosetItem {
   measurements: Record<string, number>;
   imageIds: string[];
   primaryImageId: string | null;
-  remoteImages: { url: string; signedUrl?: string }[];
+  remoteImages: {
+    id?: string;
+    mime?: string;
+    publicUrl?: string;
+    signedUrl?: string;
+    storageBucket?: string;
+    storagePath?: string;
+    storageProvider?: string;
+    url?: string;
+  }[];
   externalImageUrl: string;
 }
 

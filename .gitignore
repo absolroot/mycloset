@@ -15,6 +15,7 @@ tmp/
 !/artifacts/logs/.gitkeep
 /artifacts/screenshots/*
 !/artifacts/screenshots/.gitkeep
+.lazyweb/
 
 # Local runtime config
 config.js

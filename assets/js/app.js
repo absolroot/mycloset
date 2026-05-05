@@ -4,6 +4,7 @@ const DEFAULT_CSV_FILE = "Closet 137abb41507c80699008e26e88fa26d9_all (2).csv";
 const DB_NAME = "closet-pwa";
 const TEMP_DB_NAME = "closet-pwa-temporary";
 const TEMP_MODE_STORAGE_KEY = "closet-temporary-mode";
+const GUEST_MODE_STORAGE_KEY = TEMP_MODE_STORAGE_KEY;
 const DB_VERSION = 1;
 const FULL_PULL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const SIGNED_IMAGE_URL_MAX_AGE_MS = 45 * 60 * 1000;
@@ -12,47 +13,103 @@ const HIDDEN_FILTER_COLOR_OPTIONS = new Set(["블루", "네이비", "카키", "�
 const DEFAULT_COLOR_OPTIONS = window.closetFormatUtils.DEFAULT_COLOR_OPTIONS;
 const {
   MEASURE_FIELDS,
-  MEASUREMENT_DEFINITIONS,
   MEASUREMENT_BY_LABEL,
   MEASUREMENT_BY_KEY,
-  MEASUREMENT_DB_ID_BY_KEY,
-  CATEGORY_MEASUREMENT_TEMPLATES
+  MEASUREMENT_DB_ID_BY_KEY
 } = window.closetMeasurementUtils;
 const {
   DEFAULT_CATEGORY_TREE,
-  CHILD_CATEGORY_ORDER,
-  CATEGORY_ICONS
+  CHILD_CATEGORY_ORDER
 } = window.closetCategoryUtils;
 const {
   cleanText,
   normalizeColor,
   normalizeItemColor,
-  clampNumber,
-  cleanNotionLabel,
   parsePrice,
-  parseNumber,
-  parseKoreanDate,
   compareDate,
   sortByUpdated,
   uniqueValues,
   sortColorOptions,
   groupBy,
-  colorToHex,
   formatWon,
   formatNumber,
-  hashString,
   escapeHtml,
   escapeAttr
 } = window.closetFormatUtils;
 const {
-  backupImagePath,
-  createZipBlob,
-  decodeSharePayload,
   downloadBlob,
-  encodeSharePayload,
-  fetchBackupImageBlob,
   sanitizeItemForExport
 } = window.closetExportUtils;
+const {
+  createZipBackup,
+  getRemoteImageUrl: getBackupRemoteImageUrl
+} = window.closetBackupUtils;
+const {
+  all: storageAll,
+  get: storageGet,
+  metaValue: storageMetaValue,
+  openDatabase: storageOpenDatabase,
+  put: storagePut,
+  remove: storageRemove,
+  setMetaValue: storageSetMetaValue
+} = window.closetStorageUtils;
+const {
+  applyImageUrl,
+  defaultImageEdit,
+  isFreshRemoteImageCache,
+  normalizeImageEdit,
+  normalizeImageUrl
+} = window.closetImageStateUtils;
+const {
+  normalizeImageLocator,
+  remoteImageCacheKey,
+  remoteImageUrl
+} = window.closetImageProviderUtils;
+const {
+  collectMeasurementsFromForm,
+  readCategoryValue,
+  refreshChildCategorySelect: refreshChildCategorySelectControl,
+  refreshMeasurementGridFromForm: refreshMeasurementGridControl,
+  refreshShoeSizeVisibility: refreshShoeSizeVisibilityControl,
+  syncCategoryCustomInput,
+  uniqueCustomMeasurementLabel
+} = window.closetFormUtils;
+const {
+  itemInitial,
+  measureFieldHtml: renderMeasureFieldHtml,
+  renderItemCard: renderItemCardHtml
+} = window.closetRenderUtils;
+const {
+  clonePlainItem,
+  csvToItems,
+  getMeasurementFieldsForItem,
+  getPrimaryImage,
+  isShoeCategory,
+  mergeImportedItem,
+  normalizeItemData,
+  normalizeRating,
+  sanitizeMeasurementData,
+  sameMeasurements
+} = window.closetItemUtils;
+const {
+  createClient: createSupabaseClient,
+  createSignedImageUrlMap,
+  deleteImage: deleteSupabaseImage,
+  deleteItem: deleteSupabaseItem,
+  ensureCategoryRowsForItem: ensureSupabaseCategoryRowsForItem,
+  fetchMeasurementDefinitions,
+  fetchPullData,
+  findOrCreateColor: findOrCreateSupabaseColor,
+  isMissingRelationError,
+  itemFromRow: supabaseItemFromRow,
+  itemToRow: supabaseItemToRow,
+  remoteImageFromRow,
+  replaceMeasurements: replaceSupabaseMeasurements,
+  signInWithGoogle,
+  signOut: signOutOfSupabase,
+  uploadItemImages,
+  upsertItem: upsertSupabaseItem
+} = window.closetSupabaseUtils;
 const filterSubscribers = new Set();
 
 const state = {
@@ -111,15 +168,16 @@ async function init() {
 
   state.db = await openDatabase();
 
-  const shared = await maybeRenderSharedView();
-  if (shared) return;
-
-  await restorePendingSync();
-  await initSupabase();
-
   if (state.temporary) {
     await startTemporarySession({ silent: true });
     return;
+  }
+
+  await restorePendingSync();
+  if (shouldInitializeSupabaseOnBoot()) {
+    await initSupabase();
+  } else {
+    updateSyncButton();
   }
 
   if (shouldRequireAuth()) {
@@ -184,9 +242,6 @@ async function prepareSessionDataLoad() {
 
 function cacheRefs() {
   refs.appShell = document.querySelector("#appShell");
-  refs.shareView = document.querySelector("#shareView");
-  refs.shareTitle = document.querySelector("#shareTitle");
-  refs.shareItems = document.querySelector("#shareItems");
   refs.searchInput = document.querySelector("#searchInput");
   refs.categoryFilter = document.querySelector("#categoryFilter");
   refs.brandFilter = document.querySelector("#brandFilter");
@@ -199,19 +254,17 @@ function cacheRefs() {
   refs.emptyState = document.querySelector("#emptyState");
   refs.detailPanel = document.querySelector("#detailPanel");
   refs.csvFileInput = document.querySelector("#csvFileInput");
-  refs.authDialog = document.querySelector("#authDialog");
-  refs.authForm = document.querySelector("#authForm");
-  refs.logoutButton = document.querySelector("#logoutButton");
   refs.toast = document.querySelector("#toast");
 }
 
 function exposeReactBridge() {
 	window.closetBridge = {
-		  addImageFromUrl: addImageFromUrlValue,
-		  closeDetail,
-		  deleteSelectedItem,
-		  duplicateSelectedItem,
-	  getAutocompleteOptions,
+			  addImageFromUrl: addImageFromUrlValue,
+			  closeDetail,
+			  deleteSelectedItem,
+			  duplicateSelectedItem,
+		  getAuthSnapshot,
+		  getAutocompleteOptions,
 	  getChildCategoryOptions,
 	  getColorOptions,
 	    getFilterSnapshot,
@@ -226,7 +279,6 @@ function exposeReactBridge() {
 	    saveImageEdit: saveImageEditFromOptions,
 	    saveSelectedItemRating,
 	    saveSelectedItem: saveSelectedItemFromData,
-    shareSelectedItem,
     setFilters,
     subscribeFilters,
     getAnalysisItems: () => state.items.map(item => ({...item})),
@@ -262,11 +314,6 @@ function bindEvents() {
   });
 
   refs.csvFileInput?.addEventListener("change", handleCsvFile);
-  refs.authForm?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    await requestGoogleLogin();
-  });
-
   document.addEventListener("change", handleDocumentChange);
   document.addEventListener("input", handleDocumentInput);
   document.addEventListener("click", handleDocumentClick);
@@ -313,32 +360,27 @@ async function registerServiceWorker() {
 
 function readTemporaryModePreference() {
   const params = new URLSearchParams(window.location.search);
-  const requested = ["temp", "temporary", "demo", "test"].some((key) => params.has(key));
+  const requested = ["guest", "local", "temp", "temporary", "demo", "test"].some((key) => params.has(key));
   if (requested) {
-    window.localStorage.setItem(TEMP_MODE_STORAGE_KEY, "1");
+    window.localStorage.setItem(GUEST_MODE_STORAGE_KEY, "1");
     return true;
   }
 
-  return window.localStorage.getItem(TEMP_MODE_STORAGE_KEY) === "1";
+  return window.localStorage.getItem(GUEST_MODE_STORAGE_KEY) === "1";
 }
 
 async function startTemporarySession(options = {}) {
   state.temporary = true;
-  window.localStorage.setItem(TEMP_MODE_STORAGE_KEY, "1");
+  window.localStorage.setItem(GUEST_MODE_STORAGE_KEY, "1");
 
   if (state.db?.name !== TEMP_DB_NAME) {
     state.db?.close?.();
     state.db = await openDatabase();
   }
 
-  if (state.supabase && state.session) {
-    try {
-      await state.supabase.auth.signOut();
-    } catch (error) {
-      console.warn("Temporary mode sign-out failed", error);
-    }
-    state.session = null;
-  }
+  state.supabase = null;
+  state.supabaseReady = false;
+  state.session = null;
 
   state.pendingItemIds.clear();
   state.pendingDeleteIds.clear();
@@ -357,14 +399,14 @@ async function startTemporarySession(options = {}) {
 
   state.loading = false;
   render();
-  if (refs.authDialog?.open) refs.authDialog.close();
-  if (!options.silent) showToast("임시 테스트 모드가 시작되었습니다.");
+  navigateToAppRoot({ replace: true });
+  if (!options.silent) showToast("게스트 모드가 시작되었습니다. 데이터는 이 기기에만 저장됩니다.");
 }
 
 async function exitTemporarySession() {
-  window.localStorage.removeItem(TEMP_MODE_STORAGE_KEY);
+  window.localStorage.removeItem(GUEST_MODE_STORAGE_KEY);
   state.temporary = false;
-  showToast("임시 테스트 모드를 종료했습니다. 새로고침하면 로그인 모드로 돌아갑니다.");
+  showToast("게스트 모드를 종료했습니다. 새로고침하면 로그인 모드로 돌아갑니다.");
   window.setTimeout(() => window.location.reload(), 650);
 }
 
@@ -438,6 +480,9 @@ function handleDocumentClick(event) {
     case "logout":
       requestLogout();
       break;
+    case "login":
+      requestGoogleLogin();
+      break;
     case "start-temporary":
       startTemporarySession();
       break;
@@ -495,15 +540,19 @@ function handleDocumentClick(event) {
     case "add-measure":
       addCustomMeasureField();
       break;
-    case "share-item":
-      shareSelectedItem();
-      break;
     default:
       break;
   }
 }
 
 async function handleDocumentSubmit(event) {
+  const authForm = event.target.closest("#authForm");
+  if (authForm) {
+    event.preventDefault();
+    await requestGoogleLogin();
+    return;
+  }
+
   const form = event.target.closest("#itemForm");
   if (!form) return;
 
@@ -513,26 +562,7 @@ async function handleDocumentSubmit(event) {
 }
 
 async function openDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(getDatabaseName(), DB_VERSION);
-
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains("items")) {
-        db.createObjectStore("items", { keyPath: "id" });
-      }
-      if (!db.objectStoreNames.contains("images")) {
-        const imageStore = db.createObjectStore("images", { keyPath: "id" });
-        imageStore.createIndex("itemId", "itemId", { unique: false });
-      }
-      if (!db.objectStoreNames.contains("meta")) {
-        db.createObjectStore("meta", { keyPath: "key" });
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  return storageOpenDatabase({ name: getDatabaseName(), version: DB_VERSION });
 }
 
 function getDatabaseName() {
@@ -540,46 +570,27 @@ function getDatabaseName() {
 }
 
 function dbAll(storeName) {
-  return new Promise((resolve, reject) => {
-    const request = state.db.transaction(storeName, "readonly").objectStore(storeName).getAll();
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
+  return storageAll(state.db, storeName);
 }
 
 function dbGet(storeName, key) {
-  return new Promise((resolve, reject) => {
-    const request = state.db.transaction(storeName, "readonly").objectStore(storeName).get(key);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  return storageGet(state.db, storeName, key);
 }
 
 function dbPut(storeName, value) {
-  return new Promise((resolve, reject) => {
-    const tx = state.db.transaction(storeName, "readwrite");
-    tx.objectStore(storeName).put(value);
-    tx.oncomplete = () => resolve(value);
-    tx.onerror = () => reject(tx.error);
-  });
+  return storagePut(state.db, storeName, value);
 }
 
 function dbDelete(storeName, key) {
-  return new Promise((resolve, reject) => {
-    const tx = state.db.transaction(storeName, "readwrite");
-    tx.objectStore(storeName).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  return storageRemove(state.db, storeName, key);
 }
 
 async function dbMetaValue(key) {
-  const record = await dbGet("meta", key);
-  return record?.value || "";
+  return storageMetaValue(state.db, key);
 }
 
 async function dbSetMetaValue(key, value) {
-  await dbPut("meta", { key, value });
+  await storageSetMetaValue(state.db, key, value);
 }
 
 async function restorePendingSync() {
@@ -601,19 +612,6 @@ function serializePendingSync() {
     deleteIds: [...state.pendingDeleteIds],
     imageDeletes: [...state.pendingImageDeletes.entries()]
   };
-}
-
-function normalizeRating(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const rating = Number(value);
-  return Number.isInteger(rating) && rating >= 1 && rating <= 5 ? rating : null;
-}
-
-function normalizeItemData(item) {
-  const normalized = normalizeItemColor(item);
-  if (!normalized) return normalized;
-  const rating = normalizeRating(normalized.rating);
-  return normalized.rating === rating ? normalized : { ...normalized, rating };
 }
 
 function schedulePendingSyncPersist() {
@@ -658,7 +656,7 @@ async function importDefaultCsv(options = {}) {
     const response = await fetch(`./${encodeURIComponent(DEFAULT_CSV_FILE)}`);
     if (!response.ok) throw new Error(`CSV fetch failed: ${response.status}`);
     const text = await response.text();
-    const items = csvToItems(text, { useTempImages: Boolean(options.useTempImages) });
+    const items = csvToItems(text, { getTemporaryImageUrl, useTempImages: Boolean(options.useTempImages) });
     await upsertItems(items);
     await loadLocalItems();
     if (!options.silent) showToast(`${items.length}개 제품을 CSV에서 가져왔습니다.`);
@@ -678,7 +676,7 @@ async function handleCsvFile(event) {
 
   try {
     const text = await file.text();
-    const items = csvToItems(text, { useTempImages: state.temporary });
+    const items = csvToItems(text, { getTemporaryImageUrl, useTempImages: state.temporary });
     await upsertItems(items);
     await loadLocalItems();
     render();
@@ -690,80 +688,6 @@ async function handleCsvFile(event) {
   } finally {
     event.target.value = "";
   }
-}
-
-function csvToItems(text, options = {}) {
-  const rows = window.closetCsvUtils.parseCsv(text);
-  return rows.map((row, index) => csvRowToItem(row, index, options));
-}
-
-async function upsertItems(items) {
-  for (const item of items) {
-    const existing = await dbGet("items", item.id);
-	    await dbPut("items", {
-	      ...existing,
-	      ...item,
-	      rating: item.rating ?? existing?.rating ?? null,
-      imageIds: existing?.imageIds || [],
-      primaryImageId: existing?.primaryImageId || null,
-      remoteImages: existing?.remoteImages || [],
-      measurementsDirty: existing?.measurementsDirty ?? !sameMeasurements(existing?.measurements || {}, item.measurements || {}),
-      externalImageUrl: existing?.externalImageUrl || item.externalImageUrl || "",
-      externalImageEdit: existing?.externalImageEdit || item.externalImageEdit || defaultImageEdit(),
-      productUrl: existing?.productUrl || item.productUrl || "",
-      memo: existing?.memo || item.memo || "",
-      createdAt: existing?.createdAt || item.createdAt,
-      updatedAt: existing?.updatedAt || item.updatedAt
-    });
-  }
-}
-
-function csvRowToItem(row, index, options = {}) {
-  const now = new Date().toISOString();
-  const name = cleanText(row["이름"]) || `이름 없는 제품 ${index + 1}`;
-  const brand = cleanText(row["브랜드"]);
-  const sizeLabel = cleanText(row["옵션"] || row["신발 사이즈"]);
-  const purchaseDate = parseKoreanDate(row["구매일"]);
-  const id = `csv-${index}-${hashString([name, brand, sizeLabel, purchaseDate || ""].join("|"))}`;
-  const measurements = {};
-
-  MEASURE_FIELDS.forEach((field) => {
-    const value = parseNumber(row[field]);
-    if (value !== null) measurements[field] = value;
-  });
-
-  const tempImageUrl = options.useTempImages ? getTemporaryImageUrl(index) : "";
-
-  return {
-    id,
-    name,
-    productUrl: "",
-    memo: "",
-    parentCategory: cleanNotionLabel(row["상위 카테고리"]),
-    category: cleanNotionLabel(row["카테고리"]),
-    brand,
-    color: normalizeColor(row["색상"]),
-    sizeLabel,
-    shoeSize: cleanText(row["신발 사이즈"]),
-    retailPrice: parsePrice(row["정가"]),
-    purchasePrice: parsePrice(row["구매가"]),
-    purchaseDate,
-	    owned: String(row["보유"] || "").toLowerCase() === "yes",
-	    rating: normalizeRating(row["평점"] || row.rating || row.Rating),
-    measurements,
-    measurementsDirty: Object.keys(measurements).length > 0,
-    imageIds: [],
-    primaryImageId: null,
-    remoteImages: [],
-    imagesDirty: false,
-    externalImageUrl: tempImageUrl,
-    externalImageEdit: defaultImageEdit(),
-    source: "csv",
-    sourceIndex: index,
-    raw: row,
-    createdAt: now,
-    updatedAt: now
-  };
 }
 
 function render() {
@@ -842,149 +766,17 @@ function renderItemList() {
   const items = getVisibleItems();
   const title = state.filters.childCategory !== "all"
     ? state.filters.childCategory
-    : state.filters.parentCategory === "all" ? "제품" : state.filters.parentCategory;
+    : state.filters.parentCategory === "all" ? "전체" : state.filters.parentCategory;
   refs.resultTitle.textContent = title;
   refs.resultCount.textContent = `${items.length}개`;
   refs.itemList.className = state.view === "list" ? "item-grid list" : "item-grid";
   refs.emptyState.hidden = items.length > 0;
 
-  refs.itemList.innerHTML = items.map(renderItemCard).join("");
+  refs.itemList.innerHTML = items
+    .map((item) => renderItemCardHtml(item, { primaryImage: getPrimaryImage(item), selectedId: state.selectedId }))
+    .join("");
   hydrateImages();
   hydrateRemoteImages();
-}
-
-function renderItemCard(item) {
-  const primaryImage = getPrimaryImage(item);
-  const active = item.id === state.selectedId ? " active" : "";
-  const archived = item.owned ? "" : " is-archived";
-	  const colorStyle = `--dot:${colorToHex(item.color)}`;
-	  const title = item.name || "이름 없는 제품";
-	  const meta = [item.sizeLabel, item.category].filter(Boolean).join(" · ");
-
-	  return `
-	    <button class="item-tile${active}${archived}" data-action="select-item" data-id="${escapeAttr(item.id)}" type="button">
-	      ${renderImageSlot(item, primaryImage)}
-	      <div class="item-title">
-	        ${item.brand ? `<span class="item-brand">${escapeHtml(item.brand)}</span>` : ""}
-	        <h3>${escapeHtml(title)}</h3>
-	        <p>${escapeHtml(meta || "정보 없음")}</p>
-        <div class="chip-row">
-	          ${item.color ? `<span class="chip"><span class="color-dot" style="${escapeAttr(colorStyle)}"></span>${escapeHtml(item.color)}</span>` : ""}
-	          ${item.parentCategory ? `<span class="chip">${escapeHtml(item.parentCategory)}</span>` : ""}
-	          ${renderRatingChip(item.rating)}
-	        </div>
-      </div>
-      ${renderPriceLine(item)}
-    </button>
-  `;
-}
-
-function renderRatingChip(value) {
-  const rating = normalizeRating(value);
-  if (!rating) return "";
-  return `<span class="chip rating-chip" aria-label="평점 ${rating}점"><span aria-hidden="true">★</span>${rating}</span>`;
-}
-
-function hasPurchasePrice(value) {
-  return value !== null && value !== undefined && String(value).trim() !== "" && Number.isFinite(Number(value));
-}
-
-function formatPurchasePriceLabel(value) {
-  return hasPurchasePrice(value) ? formatWonSuffix(Number(value)) : "가격 없음";
-}
-
-function formatWonSuffix(value) {
-  return `${Number(value).toLocaleString("ko-KR")}원`;
-}
-
-function renderPriceLine(item) {
-  const hasRetail = hasPurchasePrice(item.retailPrice);
-  const hasPurchase = hasPurchasePrice(item.purchasePrice);
-  const retailPrice = Number(item.retailPrice);
-  const purchasePrice = Number(item.purchasePrice);
-
-  if (hasRetail && hasPurchase && retailPrice !== purchasePrice) {
-    return `
-      <div class="price-line price-line-stacked">
-        <span class="price-retail">${escapeHtml(formatWonSuffix(retailPrice))}</span>
-        <span class="price-purchase">${escapeHtml(formatWonSuffix(purchasePrice))}</span>
-      </div>
-    `;
-  }
-
-  return `<div class="price-line">${escapeHtml(formatPurchasePriceLabel(item.purchasePrice))}</div>`;
-}
-
-function renderImageSlot(item, primaryImage) {
-  if (primaryImage.externalUrl && primaryImage.remoteUrl) {
-    const imageStyle = `background-image:url("${primaryImage.remoteUrl}")`;
-    return `<div class="image-slot" style="${escapeAttr(imageStyle)}"></div>`;
-  }
-
-  if (primaryImage.remoteUrl) {
-    return `<div class="image-slot" data-remote-item-id="${escapeAttr(item.id)}" data-remote-image-id="${escapeAttr(primaryImage.remoteId || "")}" data-remote-url="${escapeAttr(primaryImage.remoteUrl)}"></div>`;
-  }
-
-  if (primaryImage.localId) {
-    return `<div class="image-slot" data-image-id="${escapeAttr(primaryImage.localId)}"></div>`;
-  }
-
-  return `<div class="image-slot placeholder">${escapeHtml(getInitial(item))}</div>`;
-}
-
-function renderDetailImage(primaryImage) {
-  const editStyle = imageEditStyle(primaryImage.edit || defaultImageEdit());
-
-  if (primaryImage.remoteUrl) {
-    return `<img class="detail-cover-img" data-edit-preview data-remote-image-id="${escapeAttr(primaryImage.remoteId || "")}" src="${escapeAttr(primaryImage.remoteUrl)}" style="${escapeAttr(editStyle)}" alt="">`;
-  }
-
-  if (primaryImage.localId) {
-    return `<img class="detail-cover-img" data-edit-preview data-image-id="${escapeAttr(primaryImage.localId)}" style="${escapeAttr(editStyle)}" alt="">`;
-  }
-
-  return "";
-}
-
-function imageEditorHtml(options = {}) {
-  const edit = normalizeImageEdit(options);
-  return `
-    <div class="image-editor">
-      <label>
-        <span>크기</span>
-        <input data-image-edit="scale" type="range" min="0.5" max="2.5" step="0.01" value="${escapeAttr(edit.scale)}">
-      </label>
-      <label>
-        <span>가로 위치</span>
-        <input data-image-edit="offsetX" type="range" min="-50" max="50" step="1" value="${escapeAttr(edit.offsetX)}">
-      </label>
-      <label>
-        <span>세로 위치</span>
-        <input data-image-edit="offsetY" type="range" min="-50" max="50" step="1" value="${escapeAttr(edit.offsetY)}">
-      </label>
-      <div class="image-editor-actions">
-        <button class="button secondary compact" data-action="reset-image-edit" type="button">초기화</button>
-        <button class="button primary compact" data-action="save-image-edit" type="button">편집 저장</button>
-      </div>
-    </div>
-  `;
-}
-
-function defaultImageEdit() {
-  return { scale: 1, offsetX: 0, offsetY: 0 };
-}
-
-function normalizeImageEdit(options = {}) {
-  return {
-    scale: clampNumber(options.scale, 0.5, 2.5, 1),
-    offsetX: clampNumber(options.offsetX, -50, 50, 0),
-    offsetY: clampNumber(options.offsetY, -50, 50, 0)
-  };
-}
-
-function imageEditStyle(options = {}) {
-  const edit = normalizeImageEdit(options);
-  return `--image-scale:${edit.scale};--image-x:${edit.offsetX}%;--image-y:${edit.offsetY}%;`;
 }
 
 function renderDetail() {
@@ -1020,7 +812,7 @@ function buildDetailPayload(item) {
 	    colorOptions: getColorOptions(),
 	    autocompleteOptions: getAutocompleteOptions(),
 	    measurementFields: getMeasurementFieldsForItem(item),
-	    initial: getInitial(item)
+	    initial: itemInitial(item)
 	  };
 	}
 
@@ -1050,152 +842,14 @@ function detailPayloadSignature(payload) {
   });
 }
 
-function clonePlainItem(item) {
-  return JSON.parse(JSON.stringify(item));
-}
-
-function fieldHtml(label, name, value, className = "", type = "text", inputMode = "", required = false) {
-  const reqMark = required ? `<span class="required-mark">*</span>` : "";
-  return `
-    <label class="field ${escapeAttr(className)}">
-      <span>${escapeHtml(label)}${reqMark}</span>
-      <input name="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${escapeAttr(value || "")}" ${inputMode ? `inputmode="${escapeAttr(inputMode)}"` : ""} ${required ? "required" : ""}>
-    </label>
-  `;
-}
-
-function parentCategoryGridHtml(label, name, value, options) {
-  const selectedValue = cleanText(value);
-  const coreCategories = ["상의", "하의", "아우터", "신발", "가방", "악세사리"];
-  
-  const extraCategories = options.filter(opt => opt && !coreCategories.includes(opt));
-  const allCategories = [...new Set([...coreCategories, ...extraCategories, selectedValue].filter(Boolean))];
-
-  const gridHtml = allCategories.map(cat => {
-    const icon = CATEGORY_ICONS[cat] || CATEGORY_ICONS["악세사리"];
-    const active = selectedValue === cat ? "active" : "";
-    return `
-      <button class="category-grid-btn ${active}" data-category-value="${escapeAttr(cat)}" type="button">
-        <div class="icon">${icon}</div>
-        <span class="label">${escapeHtml(cat)}</span>
-      </button>
-    `;
-  }).join("");
-
-  return `
-    <div class="field category-field wide" data-category-field="parent">
-      <span>${escapeHtml(label)}<span class="required-mark">*</span></span>
-      <input type="hidden" name="${escapeAttr(name)}" value="${escapeAttr(selectedValue)}">
-      <div class="category-grid">
-        ${gridHtml}
-      </div>
-    </div>
-  `;
-}
-
-function categorySelectHtml(label, name, value, options, mode) {
-  const selectedValue = cleanText(value);
-  const hasSelected = options.includes(selectedValue);
-  const useCustom = selectedValue && !hasSelected;
-  const selectValue = useCustom ? "__custom__" : selectedValue;
-
-  return `
-    <label class="field category-field wide" data-category-field="${escapeAttr(mode)}">
-      <span>${escapeHtml(label)}</span>
-      <select name="${escapeAttr(name)}" data-category-select="${escapeAttr(mode)}">
-        <option value="">선택 안 함</option>
-        ${options.map((option) => `<option value="${escapeAttr(option)}" ${option === selectValue ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
-        <option value="__custom__" ${useCustom ? "selected" : ""}>+ 새 카테고리 추가</option>
-      </select>
-      <input class="category-custom-input" name="${escapeAttr(name)}Custom" value="${escapeAttr(useCustom ? selectedValue : "")}" placeholder="새 카테고리 이름" ${useCustom ? "" : "hidden"}>
-    </label>
-  `;
-}
-
-function textareaHtml(label, name, value, className = "") {
-  return `
-    <label class="field ${escapeAttr(className)}">
-      <span>${escapeHtml(label)}</span>
-      <textarea name="${escapeAttr(name)}">${escapeHtml(value || "")}</textarea>
-    </label>
-  `;
-}
-
-function measureFieldHtml(field, value) {
-  const key = field.key || "";
-  const label = field.label || "";
-  const custom = field.custom ? "true" : "false";
-  const labelInput = field.custom
-    ? `<input class="measure-label-input" data-measure-label="${escapeAttr(label)}" value="${escapeAttr(label)}" placeholder="실측명">`
-    : `<span>${escapeHtml(label)}</span>`;
-
-  return `
-    <label data-measure-row>
-      ${labelInput}
-      <input data-measure="${escapeAttr(label)}" data-measure-key="${escapeAttr(key)}" data-measure-custom="${custom}" inputmode="decimal" value="${escapeAttr(value ?? "")}" placeholder="${escapeAttr(field.unit || "cm")}">
-    </label>
-  `;
-}
-
-function getMeasurementFieldsForItem(item) {
-  const fields = [];
-  const seen = new Set();
-
-  const addByLabel = (label, custom = false) => {
-    const cleanLabel = cleanText(label);
-    if (!cleanLabel || seen.has(cleanLabel)) return;
-
-    const definition = MEASUREMENT_BY_LABEL.get(cleanLabel);
-    fields.push({
-      key: definition?.key || "",
-      label: cleanLabel,
-      unit: definition?.unit || "cm",
-      custom: custom || !definition
-    });
-    seen.add(cleanLabel);
-  };
-
-  getTemplateMeasurementKeys(item).forEach((key) => {
-    const definition = MEASUREMENT_BY_KEY.get(key);
-    if (definition) addByLabel(definition.label);
-  });
-
-  Object.keys(item.measurements || {}).forEach((label) => addByLabel(label, !MEASUREMENT_BY_LABEL.has(label)));
-
-  if (!fields.length) {
-    ["총장", "어깨", "가슴", "소매"].forEach((label) => addByLabel(label));
-  }
-
-  return fields;
-}
-
-function getTemplateMeasurementKeys(item) {
-  const categoryText = [item.parentCategory, item.category].filter(Boolean).join(" ");
-  const template = CATEGORY_MEASUREMENT_TEMPLATES.find((candidate) =>
-    candidate.match.some((keyword) => categoryText.includes(keyword))
-  );
-  return template?.fields || [];
-}
-
 function addCustomMeasureField() {
   const grid = refs.detailPanel.querySelector(".measure-grid");
   if (!grid) return;
 
   const label = uniqueCustomMeasurementLabel(grid);
-  grid.insertAdjacentHTML("beforeend", measureFieldHtml({ label, custom: true, unit: "cm" }, ""));
+  grid.insertAdjacentHTML("beforeend", renderMeasureFieldHtml({ label, custom: true, unit: "cm" }, ""));
   const added = grid.querySelector(`[data-measure-label="${CSS.escape(label)}"]`);
   added?.focus();
-}
-
-function uniqueCustomMeasurementLabel(grid) {
-  const existing = new Set(Array.from(grid.querySelectorAll("[data-measure]")).map((input) => input.dataset.measure));
-  let index = 1;
-  let label = "추가 실측";
-  while (existing.has(label)) {
-    index += 1;
-    label = `추가 실측 ${index}`;
-  }
-  return label;
 }
 
 function getParentCategoryOptions() {
@@ -1265,7 +919,32 @@ function getFilterSnapshot() {
     brands: uniqueValues(state.items.map((item) => item.brand)),
     colors: getFilterColorOptions(),
     loading: state.loading
-  });
+	  });
+	}
+
+function getAuthSnapshot() {
+  const user = state.session?.user || null;
+  const metadata = user?.user_metadata || {};
+  const displayName = cleanText(metadata.full_name || metadata.name || user?.email || "");
+  const avatarUrl = cleanText(metadata.avatar_url || metadata.picture || "");
+  const status = state.temporary ? "guest" : user ? "signed-in" : "signed-out";
+
+  return {
+    status,
+    displayName,
+    email: cleanText(user?.email || ""),
+    avatarUrl,
+    syncing: state.syncing,
+    supabaseReady: state.supabaseReady,
+    hasPendingSync: hasPendingSync(),
+    lastSyncedAt: state.lastSyncedAt || "",
+    lastSyncError: Boolean(state.lastSyncError),
+    itemCount: state.items.length
+  };
+}
+
+function emitAuthChange() {
+  window.dispatchEvent(new CustomEvent("closet:auth-state-change", { detail: getAuthSnapshot() }));
 }
 
 function setFilters(nextPartialFilters = {}) {
@@ -1307,92 +986,19 @@ function rememberColorOption(color) {
   state.colorOptions = uniqueValues([...state.colorOptions, value]);
 }
 
-function readCategoryValue(form, name) {
-  const selected = cleanText(new FormData(form).get(name));
-  if (selected !== "__custom__") return selected;
-  return cleanText(new FormData(form).get(`${name}Custom`));
-}
-
-function syncCategoryCustomInput(select) {
-  const field = select.closest("[data-category-field]");
-  const input = field?.querySelector(".category-custom-input");
-  if (!input) return;
-
-  const isCustom = select.value === "__custom__";
-  input.hidden = !isCustom;
-  if (isCustom) input.focus();
-  else input.value = "";
-}
-
 function refreshChildCategorySelect(form, opts = {}) {
-  const childSelect = form?.querySelector('[data-category-select="child"]');
-  if (!childSelect) return;
-
-  const previous = readCategoryValue(form, "category");
-  const parent = readCategoryValue(form, "parentCategory");
-  const categoryOptions = getChildCategoryOptions(parent);
-  const keepPrevious = previous && categoryOptions.includes(previous);
-  const useCustom = previous && !opts.resetInvalid && !keepPrevious;
-  const nextValue = keepPrevious ? previous : "";
-
-  childSelect.innerHTML = `
-    <option value="">선택 안 함</option>
-    ${categoryOptions.map((option) => `<option value="${escapeAttr(option)}">${escapeHtml(option)}</option>`).join("")}
-    <option value="__custom__">+ 새 카테고리 추가</option>
-  `;
-  childSelect.value = useCustom ? "__custom__" : nextValue;
-
-  const customInput = form.querySelector('[name="categoryCustom"]');
-  if (customInput) {
-    customInput.hidden = !useCustom;
-    customInput.value = useCustom ? previous : "";
-  }
+  refreshChildCategorySelectControl(form, { ...opts, getChildCategoryOptions });
 }
 
 function refreshShoeSizeVisibility(form) {
-  const field = form?.querySelector(".shoe-size-field");
-  if (!field) return;
-
-  const parentCategory = readCategoryValue(form, "parentCategory");
-  const category = readCategoryValue(form, "category");
-  const visible = isShoeCategory({ parentCategory, category });
-  field.classList.toggle("is-hidden", !visible);
-  const input = field.querySelector("[name='shoeSize']");
-  if (input && !visible) input.value = "";
+  refreshShoeSizeVisibilityControl(form, { isShoeCategory });
 }
 
 function refreshMeasurementGridFromForm(form) {
-  const grid = form?.querySelector(".measure-grid");
-  if (!grid) return;
-
-  const measurements = collectMeasurementsFromForm(form);
-  const item = {
-    parentCategory: readCategoryValue(form, "parentCategory"),
-    category: readCategoryValue(form, "category"),
-    measurements
-  };
-  grid.innerHTML = getMeasurementFieldsForItem(item)
-    .map((field) => measureFieldHtml(field, measurements[field.label]))
-    .join("");
-}
-
-function collectMeasurementsFromForm(form) {
-  const measurements = {};
-  form.querySelectorAll("[data-measure]").forEach((input) => {
-    const value = parseNumber(input.value);
-    if (value === null) return;
-
-    const row = input.closest("[data-measure-row]");
-    const labelInput = row?.querySelector("[data-measure-label]");
-    const label = cleanText(labelInput?.value || input.dataset.measure);
-    if (label) measurements[label] = value;
+  refreshMeasurementGridControl(form, {
+    getMeasurementFieldsForItem,
+    measureFieldHtml: renderMeasureFieldHtml
   });
-  return measurements;
-}
-
-function isShoeCategory(item) {
-  const text = [item.parentCategory, item.category].filter(Boolean).join(" ");
-  return /신발|스니커즈|구두|샌들|부츠/.test(text);
 }
 
 function getVisibleItems() {
@@ -1611,23 +1217,6 @@ async function saveSelectedItemRating(value) {
   return { ok: true, item: clonePlainItem(updated) };
 }
 
-function sanitizeMeasurementData(measurements) {
-  const result = {};
-  Object.entries(measurements || {}).forEach(([label, value]) => {
-    const cleanLabel = cleanText(label);
-    const parsed = parseNumber(value);
-    if (cleanLabel && parsed !== null) result[cleanLabel] = parsed;
-  });
-  return result;
-}
-
-function sameMeasurements(a = {}, b = {}) {
-  const aKeys = Object.keys(a).sort();
-  const bKeys = Object.keys(b).sort();
-  if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((key, index) => key === bKeys[index] && Number(a[key]) === Number(b[key]));
-}
-
 async function saveItem(item) {
   await dbPut("items", normalizeItemData(item));
 }
@@ -1816,20 +1405,6 @@ async function attachExternalImageUrl(item, url) {
   render();
   showToast("이미지 URL을 저장했습니다.");
   queueAutoSyncItem(updated.id);
-}
-
-function normalizeImageUrl(value) {
-  const url = cleanText(value);
-  if (!url) return "";
-
-  try {
-    const parsed = new URL(url, window.location.href);
-    if (!["http:", "https:"].includes(parsed.protocol)) return "";
-    return parsed.href;
-  } catch (error) {
-    console.warn("Invalid image URL", error);
-    return "";
-  }
 }
 
 function readImageEditOptions() {
@@ -2069,8 +1644,9 @@ async function cacheRemoteImageUncached(item, remote) {
   }
 
   const fallbackRecord = existing?.blob ? existing : null;
-  const remoteUrl = remote.signedUrl || remote.publicUrl || "";
+  const remoteUrl = remoteImageUrl(remote);
   if (!remoteUrl) return fallbackRecord ? getImageUrl(remote.id) : "";
+  const locator = normalizeImageLocator(remote);
 
   try {
     const response = await fetch(remoteUrl, { mode: "cors", cache: "force-cache" });
@@ -2084,7 +1660,9 @@ async function cacheRemoteImageUncached(item, remote) {
       mime: blob.type || remote.mime || "image/webp",
       width: remote.width || existing?.width || null,
       height: remote.height || existing?.height || null,
-      storagePath: remote.storagePath || "",
+      storagePath: locator.storagePath,
+      storageProvider: locator.storageProvider,
+      storageBucket: locator.storageBucket,
       needsUpload: false,
       cachedFromRemote: true,
       remoteItemUpdatedAt: item.updatedAt || "",
@@ -2115,15 +1693,6 @@ async function promoteCachedRemoteImage(item, remote) {
 
   await dbPut("items", normalizeItemData(updated));
   replaceLocalItem(updated);
-}
-
-function isFreshRemoteImageCache(record, remote, itemUpdatedAt) {
-  return Boolean(
-    record?.blob &&
-    record.cachedFromRemote &&
-    record.storagePath === (remote.storagePath || "") &&
-    (record.remoteItemUpdatedAt || "") === (itemUpdatedAt || "")
-  );
 }
 
 async function resolveLocalImageState(existing, remoteImages, itemUpdatedAt) {
@@ -2157,14 +1726,6 @@ async function resolveLocalImageState(existing, remoteImages, itemUpdatedAt) {
   return { imageIds: uniqueImageIds, primaryImageId };
 }
 
-function applyImageUrl(element, url) {
-  if (element.tagName === "IMG") {
-    element.src = url;
-  } else {
-    element.style.backgroundImage = `url("${url}")`;
-  }
-}
-
 function getSelectedItem() {
   if (state.draftItem?.id === state.selectedId) return state.draftItem;
   return state.items.find((item) => item.id === state.selectedId);
@@ -2172,45 +1733,6 @@ function getSelectedItem() {
 
 function isDraftItem(item) {
   return Boolean(item && state.draftItem?.id === item.id);
-}
-
-function getPrimaryImage(item) {
-  if (item?.primaryImageId) {
-    return { localId: item.primaryImageId, remoteUrl: "", externalUrl: false, editable: true, edit: defaultImageEdit() };
-  }
-
-  const externalImageUrl = cleanText(item?.externalImageUrl);
-  if (externalImageUrl) {
-    return { localId: "", remoteUrl: externalImageUrl, externalUrl: true, editable: true, edit: item.externalImageEdit || defaultImageEdit() };
-  }
-
-  const remote = [...(item?.remoteImages || [])].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))[0];
-  const remoteUrl = remote?.signedUrl || remote?.publicUrl || "";
-  return {
-    localId: "",
-    remoteId: remote?.id || "",
-    storagePath: remote?.storagePath || "",
-    remoteUrl,
-    externalUrl: false,
-    editable: Boolean(remoteUrl),
-    edit: defaultImageEdit()
-  };
-}
-
-function appendCacheBuster(url, version) {
-  if (!url || !version) return url || "";
-
-  try {
-    const parsed = new URL(url);
-    parsed.searchParams.set("v", String(version));
-    return parsed.href;
-  } catch (error) {
-    return url;
-  }
-}
-
-function getInitial(item) {
-  return (item.brand || item.name || "?").trim().slice(0, 1).toUpperCase();
 }
 
 function exportJson() {
@@ -2226,150 +1748,20 @@ async function exportZipBackup() {
   try {
     showToast("이미지 포함 백업을 준비하고 있습니다.");
 
-    const imageBackup = await collectBackupImageFiles();
-    const payload = {
-      version: 2,
-      exportedAt: new Date().toISOString(),
-      items: state.items.map(sanitizeItemForExport),
-      images: imageBackup.images,
-      skippedImages: imageBackup.skippedImages
-    };
-    const zipBlob = await createZipBlob([
-      {
-        name: "backup.json",
-        blob: new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
-      },
-      ...imageBackup.files
-    ]);
+    const { zipBlob, skippedImages } = await createZipBackup(state.items, {
+      defaultImageEdit,
+      getImageRecord: (imageId) => dbGet("images", imageId),
+      getRemoteImageUrl: (remoteImage) => getBackupRemoteImageUrl(remoteImage, state.supabase),
+      normalizeImageEdit
+    });
 
     downloadBlob(`closet-backup-${window.closetCsvUtils.dateStamp()}.zip`, zipBlob);
-    const skippedCount = imageBackup.skippedImages.length;
+    const skippedCount = skippedImages.length;
     showToast(skippedCount ? `ZIP 백업을 내보냈습니다. 이미지 ${skippedCount}개는 포함하지 못했습니다.` : "ZIP 백업을 내보냈습니다.");
   } catch (error) {
     console.error(error);
     showToast("ZIP 백업을 만들지 못했습니다.");
   }
-}
-
-async function collectBackupImageFiles() {
-  const files = [];
-  const images = [];
-  const skippedImages = [];
-  const seen = new Set();
-
-  for (const item of state.items) {
-    const localImageIds = uniqueValues([item.primaryImageId, ...(item.imageIds || [])]).filter(Boolean);
-    for (const imageId of localImageIds) {
-      if (seen.has(imageId)) continue;
-
-      try {
-        const image = await dbGet("images", imageId);
-        if (!image?.blob) {
-          skippedImages.push({ itemId: item.id, imageId, source: "local", reason: "missing-local-blob" });
-          continue;
-        }
-
-        const mime = image.mime || image.blob.type || "application/octet-stream";
-        const filePath = backupImagePath(item.id, imageId, mime);
-        seen.add(imageId);
-        files.push({ name: filePath, blob: image.blob });
-        images.push({
-          itemId: item.id,
-          imageId,
-          file: filePath,
-          source: "local",
-          mime,
-          width: image.width || null,
-          height: image.height || null,
-          storagePath: image.storagePath || "",
-          isPrimary: imageId === item.primaryImageId
-        });
-      } catch (error) {
-        console.warn("Local image backup failed", error);
-        skippedImages.push({ itemId: item.id, imageId, source: "local", reason: "read-failed" });
-      }
-    }
-
-    for (const remoteImage of item.remoteImages || []) {
-      const imageId = remoteImage.id || remoteImage.storagePath || "";
-      if (!imageId || seen.has(imageId)) continue;
-
-      const url = await getRemoteBackupImageUrl(remoteImage);
-      if (!url) {
-        skippedImages.push({ itemId: item.id, imageId, source: "remote", reason: "missing-url" });
-        continue;
-      }
-
-      try {
-        const blob = await fetchBackupImageBlob(url);
-        const mime = blob.type || "application/octet-stream";
-        const filePath = backupImagePath(item.id, imageId, mime);
-        seen.add(imageId);
-        files.push({ name: filePath, blob });
-        images.push({
-          itemId: item.id,
-          imageId,
-          file: filePath,
-          source: "remote",
-          mime,
-          width: remoteImage.width || null,
-          height: remoteImage.height || null,
-          storagePath: remoteImage.storagePath || "",
-          isPrimary: Boolean(remoteImage.isPrimary)
-        });
-      } catch (error) {
-        console.warn("Remote image backup failed", error);
-        skippedImages.push({ itemId: item.id, imageId, source: "remote", reason: "fetch-failed" });
-      }
-    }
-
-    const externalUrl = cleanText(item.externalImageUrl);
-    if (externalUrl) {
-      const imageId = `external-${hashString(externalUrl)}`;
-      if (seen.has(imageId)) continue;
-
-      try {
-        const blob = await fetchBackupImageBlob(externalUrl);
-        const mime = blob.type || "application/octet-stream";
-        const filePath = backupImagePath(item.id, imageId, mime);
-        seen.add(imageId);
-        files.push({ name: filePath, blob });
-        images.push({
-          itemId: item.id,
-          imageId,
-          file: filePath,
-          source: "external-url",
-          mime,
-          width: null,
-          height: null,
-          externalUrl,
-          edit: normalizeImageEdit(item.externalImageEdit || defaultImageEdit()),
-          isPrimary: !item.primaryImageId
-        });
-      } catch (error) {
-        console.warn("External image backup failed", error);
-        skippedImages.push({ itemId: item.id, imageId, source: "external-url", url: externalUrl, reason: "fetch-failed" });
-      }
-    }
-  }
-
-  return { files, images, skippedImages };
-}
-
-async function getRemoteBackupImageUrl(remoteImage) {
-  if (state.supabase && remoteImage.storagePath) {
-    try {
-      const { data, error } = await state.supabase.storage
-        .from("wardrobe-images")
-        .createSignedUrl(remoteImage.storagePath, 60 * 60);
-      if (error) throw error;
-      if (data?.signedUrl) return data.signedUrl;
-    } catch (error) {
-      console.warn("Fresh signed image URL could not be created", error);
-    }
-  }
-
-  return remoteImage.signedUrl || remoteImage.publicUrl || "";
 }
 
 function exportCsv() {
@@ -2414,6 +1806,14 @@ function exportCsv() {
 }
 
 async function initSupabase() {
+  if (state.temporary) {
+    state.supabase = null;
+    state.supabaseReady = false;
+    state.session = null;
+    updateSyncButton();
+    return;
+  }
+
   const config = window.WARDROBE_CONFIG || {};
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
     state.supabaseReady = false;
@@ -2423,11 +1823,7 @@ async function initSupabase() {
 
   try {
     const createClient = window.WARDROBE_SUPABASE_CREATE_CLIENT;
-    if (!createClient) {
-      throw new Error("Supabase client loader is missing.");
-    }
-
-    state.supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+    state.supabase = createSupabaseClient(config, createClient);
     state.supabaseReady = true;
 
     let initialAuthSettled = false;
@@ -2457,7 +1853,7 @@ async function initSupabase() {
       if (session) {
         resetSupabaseLookupCaches();
         state.authPrompted = false;
-        if (refs.authDialog?.open) refs.authDialog.close();
+        navigateToAppRoot({ replace: true });
         if (!sameUser || event === "USER_UPDATED") {
           resumeAuthenticatedSession();
         }
@@ -2485,11 +1881,40 @@ async function initSupabase() {
   updateSyncButton();
 }
 
-function updateSyncButton() {
-  if (!refs.logoutButton) return;
+function shouldInitializeSupabaseOnBoot() {
+  if (state.temporary) return false;
+  return hasSupabaseAuthCallback() || hasCachedSupabaseSession();
+}
 
-  refs.logoutButton.hidden = !state.session;
-  refs.logoutButton.disabled = state.syncing;
+function hasSupabaseAuthCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return params.has("code") || hashParams.has("access_token") || hashParams.has("refresh_token");
+}
+
+function hasCachedSupabaseSession() {
+  const config = window.WARDROBE_CONFIG || {};
+  if (!config.supabaseUrl || !config.supabaseAnonKey) return false;
+
+  const keys = [];
+  try {
+    const projectRef = new URL(config.supabaseUrl).hostname.split(".")[0];
+    if (projectRef) keys.push(`sb-${projectRef}-auth-token`);
+  } catch (error) {
+    console.warn("Supabase URL could not be parsed for cached session detection", error);
+  }
+
+  try {
+    if (keys.some((key) => window.localStorage.getItem(key))) return true;
+    return Object.keys(window.localStorage).some((key) => /^sb-.+-auth-token$/.test(key));
+  } catch (error) {
+    console.warn("Cached Supabase session could not be read", error);
+    return false;
+  }
+}
+
+function updateSyncButton() {
+  emitAuthChange();
 }
 
 async function handleSyncButton() {
@@ -2523,11 +1948,25 @@ function requireAuthenticatedMutation() {
 }
 
 function showAuthDialog(options = {}) {
-  if (!refs.authDialog || !shouldRequireAuth()) return;
+  if (!shouldRequireAuth()) return;
   if (options.once && state.authPrompted) return;
 
   state.authPrompted = true;
-  if (!refs.authDialog.open) refs.authDialog.showModal();
+  navigateToLogin({ replace: true });
+}
+
+function navigateToLogin(options = {}) {
+  if (window.location.pathname === "/login") return;
+  const method = options.replace ? "replaceState" : "pushState";
+  window.history[method]({}, "", "/login");
+  window.dispatchEvent(new Event("popstate"));
+}
+
+function navigateToAppRoot(options = {}) {
+  if (window.location.pathname === "/") return;
+  const method = options.replace ? "replaceState" : "pushState";
+  window.history[method]({}, "", "/");
+  window.dispatchEvent(new Event("popstate"));
 }
 
 async function resumeAuthenticatedSession() {
@@ -2553,6 +1992,7 @@ function resetSupabaseLookupCaches() {
 
 function queueAutoSyncItem(itemId) {
   if (!itemId) return;
+  if (state.temporary) return;
   state.pendingDeleteIds.delete(itemId);
   state.pendingItemIds.add(itemId);
   schedulePendingSyncPersist();
@@ -2560,6 +2000,7 @@ function queueAutoSyncItem(itemId) {
 }
 
 function queueAutoSyncItems(itemIds) {
+  if (state.temporary) return;
   itemIds.filter(Boolean).forEach((itemId) => {
     state.pendingDeleteIds.delete(itemId);
     state.pendingItemIds.add(itemId);
@@ -2570,6 +2011,7 @@ function queueAutoSyncItems(itemIds) {
 
 function queueAutoDelete(itemId) {
   if (!itemId) return;
+  if (state.temporary) return;
   state.pendingItemIds.delete(itemId);
   state.pendingDeleteIds.add(itemId);
   schedulePendingSyncPersist();
@@ -2586,7 +2028,7 @@ async function queueDeleteItemImages(item, keepImageIds = []) {
     if (!imageId || keep.has(imageId) || queued.has(imageId)) continue;
     const image = await dbGet("images", imageId);
     const remote = remoteById.get(imageId);
-    queueAutoDeleteImage(imageId, image?.storagePath || remote?.storagePath || "");
+    queueAutoDeleteImage(imageId, image?.storagePath ? image : remote || "");
     await dbDelete("images", imageId);
     revokeImageUrl(imageId);
     queued.add(imageId);
@@ -2595,14 +2037,15 @@ async function queueDeleteItemImages(item, keepImageIds = []) {
   for (const remote of item.remoteImages || []) {
     const imageId = remote?.id;
     if (!imageId || keep.has(imageId) || queued.has(imageId)) continue;
-    queueAutoDeleteImage(imageId, remote.storagePath || "");
+    queueAutoDeleteImage(imageId, remote);
     queued.add(imageId);
   }
 }
 
-function queueAutoDeleteImage(imageId, storagePath = "") {
+function queueAutoDeleteImage(imageId, storageLocator = "") {
   if (!imageId) return;
-  state.pendingImageDeletes.set(imageId, storagePath);
+  if (state.temporary) return;
+  state.pendingImageDeletes.set(imageId, storageLocator);
   schedulePendingSyncPersist();
   scheduleAutoSync();
 }
@@ -2635,13 +2078,13 @@ async function syncQueuedChanges(options = {}) {
     updateSyncButton();
 
     for (const [imageId, storagePath] of [...state.pendingImageDeletes.entries()]) {
-      await deleteImageFromSupabase(imageId, storagePath);
+      await deleteSupabaseImage(state.supabase, imageId, storagePath);
       state.pendingImageDeletes.delete(imageId);
       await persistPendingSync();
     }
 
     for (const itemId of [...state.pendingDeleteIds]) {
-      await deleteItemFromSupabase(itemId);
+      await deleteSupabaseItem(state.supabase, itemId);
       state.pendingDeleteIds.delete(itemId);
       await persistPendingSync();
     }
@@ -2672,17 +2115,28 @@ function hasPendingSync() {
 }
 
 async function requestGoogleLogin() {
+  const wasTemporary = state.temporary;
+  if (wasTemporary) {
+    state.temporary = false;
+    window.localStorage.removeItem(GUEST_MODE_STORAGE_KEY);
+    emitAuthChange();
+  }
+
   if (!state.supabase) {
+    await initSupabase();
+  }
+
+  if (!state.supabase) {
+    if (wasTemporary) {
+      state.temporary = true;
+      window.localStorage.setItem(GUEST_MODE_STORAGE_KEY, "1");
+      emitAuthChange();
+    }
     showToast("Supabase 설정 또는 네트워크 연결을 확인해주세요.");
     return;
   }
 
-  const { error } = await state.supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${window.location.origin}${window.location.pathname}`
-    }
-  });
+  const { error } = await signInWithGoogle(state.supabase, `${window.location.origin}${window.location.pathname}`);
 
   if (error) {
     showToast(error.message);
@@ -2693,14 +2147,12 @@ async function requestGoogleLogin() {
 async function requestLogout() {
   if (!state.supabase || !state.session) return;
 
-  refs.logoutButton?.setAttribute("disabled", "");
-
   try {
     if (hasPendingSync()) {
       await syncQueuedChanges({ silent: true });
     }
 
-    const { error } = await state.supabase.auth.signOut();
+    const { error } = await signOutOfSupabase(state.supabase);
     if (error) {
       showToast(error.message);
       return;
@@ -2723,10 +2175,10 @@ async function syncNow(options = {}) {
       await pushItemToSupabase(item);
     }
     for (const [imageId, storagePath] of [...state.pendingImageDeletes.entries()]) {
-      await deleteImageFromSupabase(imageId, storagePath);
+      await deleteSupabaseImage(state.supabase, imageId, storagePath);
     }
     for (const itemId of [...state.pendingDeleteIds]) {
-      await deleteItemFromSupabase(itemId);
+      await deleteSupabaseItem(state.supabase, itemId);
     }
     await pullFromSupabase({ silent: true });
     state.pendingItemIds.clear();
@@ -2753,52 +2205,16 @@ async function pushItemToSupabase(item) {
   await ensureMeasurementDefinitionsLoaded();
   const userId = state.session.user.id;
   if (SYNC_CATEGORY_ROWS) {
-    await ensureCategoryRowsForItem(item, userId);
+    await ensureSupabaseCategoryRowsForItem(state.supabase, item, userId, {
+      categoryCache: state.categoryCache,
+      cleanText
+    });
   }
   await ensureColorRowForItem(item, userId);
-  const hasUploadedImage = Boolean(item.primaryImageId || (item.imageIds || []).length);
-  const row = {
-    id: item.id,
-    user_id: userId,
-    name: item.name,
-    product_url: item.productUrl || null,
-    memo: item.memo || null,
-    parent_category: item.parentCategory || null,
-    category: item.category || null,
-    brand: item.brand || null,
-    color: item.color || null,
-    image_url: hasUploadedImage ? null : item.externalImageUrl || null,
-    image_edit: item.externalImageEdit || {},
-    size_label: item.sizeLabel || null,
-    shoe_size: item.shoeSize || null,
-    retail_price: item.retailPrice,
-	    purchase_price: item.purchasePrice,
-	    purchase_date: item.purchaseDate || null,
-	    owned: item.owned,
-	    rating: normalizeRating(item.rating),
-	    raw: {
-	      ...(item.raw || {}),
-	      rating: normalizeRating(item.rating),
-	      externalImageUrl: hasUploadedImage ? null : item.externalImageUrl || null,
-	      externalImageEdit: hasUploadedImage ? null : item.externalImageEdit || null
-    },
-    created_at: item.createdAt || new Date().toISOString(),
-    updated_at: item.updatedAt || new Date().toISOString()
-  };
+  const row = supabaseItemToRow(item, userId, { normalizeRating });
 
-	  const { error } = await state.supabase.from("items").upsert(row);
-	  if (error) {
-	    if (isMissingRatingColumnError(error) && "rating" in row) {
-	      state.ratingColumnAvailable = false;
-	      delete row.rating;
-	      const { error: retryError } = await state.supabase.from("items").upsert(row);
-	      if (retryError) throw retryError;
-	    } else {
-	      throw error;
-	    }
-	  } else {
-	    state.ratingColumnAvailable = true;
-	  }
+  const { ratingColumnAvailable } = await upsertSupabaseItem(state.supabase, row);
+  state.ratingColumnAvailable = ratingColumnAvailable;
 
   await pushMeasurementsToSupabase(item);
 
@@ -2808,77 +2224,12 @@ async function pushItemToSupabase(item) {
 async function pushMeasurementsToSupabase(item) {
   if (!item.measurementsDirty) return;
 
-  await state.supabase.from("item_measurements").delete().eq("item_id", item.id);
-  const measurements = Object.entries(item.measurements || {}).map(([label, value], index) => {
-    const definition = MEASUREMENT_BY_LABEL.get(label);
-    return {
-      item_id: item.id,
-      measurement_definition_id: definition?.id || null,
-      custom_label: definition ? null : label,
-      label,
-      value,
-      unit: definition?.unit || "cm",
-      source: "manual",
-      sort_order: index * 10
-    };
-  });
-
-  if (measurements.length) {
-    const { error: measureError } = await state.supabase.from("item_measurements").insert(measurements);
-    if (measureError) throw measureError;
-  }
+  await replaceSupabaseMeasurements(state.supabase, item, MEASUREMENT_BY_LABEL);
 
   const cleanItem = { ...item, measurementsDirty: false };
   item.measurementsDirty = false;
   await dbPut("items", cleanItem);
   replaceLocalItem(cleanItem);
-}
-
-async function ensureCategoryRowsForItem(item, userId) {
-  const parentName = cleanText(item.parentCategory);
-  if (!parentName) return;
-
-  const parent = await findOrCreateCategory(parentName, null, userId);
-  const childName = cleanText(item.category);
-  if (childName) {
-    await findOrCreateCategory(childName, parent?.id || null, userId);
-  }
-}
-
-async function findOrCreateCategory(name, parentId, userId) {
-  const cacheKey = `${userId}:${parentId || "root"}:${name.toLocaleLowerCase("ko-KR")}`;
-  const cached = state.categoryCache.get(cacheKey);
-  if (cached) return cached;
-
-  let query = state.supabase
-    .from("categories")
-    .select("id")
-    .eq("name", name)
-    .limit(1);
-
-  query = parentId ? query.eq("parent_id", parentId) : query.is("parent_id", null);
-
-  const { data, error } = await query;
-  if (error) throw error;
-  if (data?.[0]) {
-    state.categoryCache.set(cacheKey, data[0]);
-    return data[0];
-  }
-
-  const { data: inserted, error: insertError } = await state.supabase
-    .from("categories")
-    .insert({
-      owner_id: userId,
-      parent_id: parentId,
-      name,
-      is_system: false
-    })
-    .select("id")
-    .single();
-
-  if (insertError) throw insertError;
-  state.categoryCache.set(cacheKey, inserted);
-  return inserted;
 }
 
 async function ensureColorRowForItem(item, userId) {
@@ -2889,9 +2240,9 @@ async function ensureColorRowForItem(item, userId) {
   if (DEFAULT_COLOR_OPTIONS.includes(name)) return;
 
   try {
-    await findOrCreateColor(name, userId);
+    await findOrCreateSupabaseColor(state.supabase, state.colorCache, name, userId);
   } catch (error) {
-    if (isMissingSupabaseRelationError(error)) {
+    if (isMissingRelationError(error)) {
       console.warn("colors table is not available yet. Run supabase/schema.sql to persist custom color options.", error);
       return;
     }
@@ -2899,65 +2250,8 @@ async function ensureColorRowForItem(item, userId) {
   }
 }
 
-async function findOrCreateColor(name, userId) {
-  const cacheKey = `${userId}:${name.toLocaleLowerCase("ko-KR")}`;
-  const cached = state.colorCache.get(cacheKey);
-  if (cached) return cached;
-
-  const { data, error } = await state.supabase
-    .from("colors")
-    .select("id")
-    .eq("name", name)
-    .limit(1);
-
-  if (error) throw error;
-  if (data?.[0]) {
-    state.colorCache.set(cacheKey, data[0]);
-    return data[0];
-  }
-
-  const { data: inserted, error: insertError } = await state.supabase
-    .from("colors")
-    .insert({
-      owner_id: userId,
-      name,
-      is_system: false
-    })
-    .select("id")
-    .single();
-
-  if (insertError) throw insertError;
-  state.colorCache.set(cacheKey, inserted);
-  return inserted;
-}
-
 function hydrateColorOptions(rows) {
   state.colorOptions = uniqueValues((rows || []).map((row) => normalizeColor(row.name)));
-}
-
-async function fetchColorRows() {
-  if (!state.supabase) return [];
-
-  const { data, error } = await state.supabase
-    .from("colors")
-    .select("name")
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
-
-  if (!error) return data || [];
-  if (isMissingSupabaseRelationError(error)) {
-    console.warn("colors table is not available yet. Run supabase/schema.sql to persist custom color options.", error);
-    return [];
-  }
-  throw error;
-}
-
-function isMissingSupabaseRelationError(error) {
-  return error?.code === "42P01" || error?.code === "PGRST205" || /relation .*colors.* does not exist/i.test(error?.message || "");
-}
-
-function isMissingRatingColumnError(error) {
-  return error?.code === "PGRST204" && /rating/i.test(error?.message || "");
 }
 
 function hydrateMeasurementDefinitionIds(rows) {
@@ -2979,9 +2273,7 @@ async function ensureMeasurementDefinitionsLoaded() {
   if (MEASUREMENT_DB_ID_BY_KEY.size) return;
   if (!state.supabase) return;
 
-  const { data, error } = await state.supabase.from("measurement_definitions").select("*");
-  if (error) throw error;
-  hydrateMeasurementDefinitionIds(data || []);
+  hydrateMeasurementDefinitionIds(await fetchMeasurementDefinitions(state.supabase));
 }
 
 async function pushImagesToSupabase(item, userId) {
@@ -2994,45 +2286,11 @@ async function pushImagesToSupabase(item, userId) {
     images.push(image);
   }
 
-  if (!images.length) return;
-  const hasImageChanges = Boolean(item.imagesDirty || images.some((image) => !image.storagePath || image.needsUpload));
-  if (!hasImageChanges) return;
+  const { uploadedImages, itemImagesDirty } = await uploadItemImages(state.supabase, item, userId, images);
+  if (!uploadedImages.length && itemImagesDirty === item.imagesDirty) return;
 
-  const { error: primaryResetError } = await state.supabase
-    .from("item_images")
-    .update({ is_primary: false })
-    .eq("item_id", item.id);
-  if (primaryResetError) throw primaryResetError;
-
-  for (const image of images) {
-    const storagePath = image.storagePath || `${userId}/${item.id}/${image.id}.webp`;
-    const shouldUpload = !image.storagePath || image.needsUpload;
-    if (shouldUpload) {
-      const { error: uploadError } = await state.supabase.storage
-        .from("wardrobe-images")
-        .upload(storagePath, image.blob, {
-          contentType: image.mime || image.blob.type || "image/webp",
-          upsert: true
-        });
-      if (uploadError) throw uploadError;
-    }
-
-    const imageRow = {
-      id: image.id,
-      item_id: item.id,
-      owner_id: userId,
-      storage_path: storagePath,
-      width: image.width || null,
-      height: image.height || null,
-      mime: image.mime || "image/webp",
-      is_primary: image.id === item.primaryImageId
-    };
-    const { error: imageError } = await state.supabase.from("item_images").upsert(imageRow);
-    if (imageError) throw imageError;
-
-    if (shouldUpload || !image.storagePath || image.needsUpload) {
-      await dbPut("images", { ...image, storagePath, needsUpload: false });
-    }
+  for (const image of uploadedImages) {
+    await dbPut("images", image);
   }
 
   if (item.imagesDirty) {
@@ -3046,112 +2304,54 @@ async function pushImagesToSupabase(item, userId) {
 async function pullFromSupabase(options = {}) {
   if (!state.supabase || !state.session) return;
   const since = cleanText(options.since);
-  const incremental = Boolean(since);
-  const pulledAt = new Date().toISOString();
-
-  let itemQuery = state.supabase
-    .from("items")
-    .select("*")
-    .order("updated_at", { ascending: false });
-
-  if (incremental) {
-    itemQuery = itemQuery.gt("updated_at", since);
-  }
-
-  const { data: itemRows, error: itemError } = await itemQuery;
-  if (itemError) throw itemError;
-
-  const changedItemIds = (itemRows || []).map((row) => row.id);
-  const definitionPromise = incremental
-    ? Promise.resolve({ data: null, error: null })
-    : state.supabase.from("measurement_definitions").select("*");
-  const measurePromise = !incremental
-    ? state.supabase.from("item_measurements").select("*")
-    : !changedItemIds.length
-      ? Promise.resolve({ data: [], error: null })
-      : state.supabase
-      .from("item_measurements")
-      .select("*")
-      .in("item_id", changedItemIds);
-  const imagePromise = !incremental
-    ? state.supabase.from("item_images").select("*").order("created_at", { ascending: false })
-    : !changedItemIds.length
-      ? Promise.resolve({ data: [], error: null })
-      : state.supabase
-      .from("item_images")
-      .select("*")
-      .in("item_id", changedItemIds)
-      .order("created_at", { ascending: false });
-  const colorPromise = incremental ? Promise.resolve([]) : fetchColorRows();
-
-  const [{ data: definitionRows, error: definitionError }, { data: measureRows, error: measureError }, { data: imageRows, error: imageError }, colorRows] =
-    await Promise.all([definitionPromise, measurePromise, imagePromise, colorPromise]);
-
-  if (definitionError) throw definitionError;
-  if (measureError) throw measureError;
-  if (imageError) throw imageError;
+  const {
+    colorRows,
+    definitionRows,
+    imageRows,
+    incremental,
+    itemRows,
+    measureRows,
+    pulledAt
+  } = await fetchPullData(state.supabase, { since });
 
   if (!incremental) {
-    hydrateMeasurementDefinitionIds(definitionRows || []);
-    hydrateColorOptions(colorRows || []);
+    hydrateMeasurementDefinitionIds(definitionRows);
+    hydrateColorOptions(colorRows);
   }
 
-  const measurementsByItem = groupBy(measureRows || [], "item_id");
-  const imagesByItem = groupBy(imageRows || [], "item_id");
-  const signedUrlByPath = await createSignedImageUrlMap(imageRows || []);
-  const remoteIds = new Set((itemRows || []).map((row) => row.id));
+  const measurementsByItem = groupBy(measureRows, "item_id");
+  const imagesByItem = groupBy(imageRows, "item_id");
+  const signedUrlByPath = await createSignedImageUrlMap(state.supabase, imageRows);
+  const remoteIds = new Set(itemRows.map((row) => row.id));
 
   if (!incremental) {
     await pruneLocalItems(remoteIds);
   }
 
-  for (const row of itemRows || []) {
+  for (const row of itemRows) {
     const remoteImages = (imagesByItem.get(row.id) || []).map((image) => {
-      const signedUrl = signedUrlByPath.get(image.storage_path) || "";
-      return {
-        id: image.id,
+      const locator = normalizeImageLocator({
         storagePath: image.storage_path,
-        signedUrl,
-	        isPrimary: image.is_primary,
-	        width: image.width,
-	        height: image.height,
-	        mime: image.mime || "image/webp"
-	      };
-	    });
+        storageProvider: image.storage_provider,
+        storageBucket: image.storage_bucket
+      });
+      const signedUrl = signedUrlByPath.get(remoteImageCacheKey(locator)) || signedUrlByPath.get(locator.storagePath) || "";
+      return remoteImageFromRow(image, signedUrl);
+    });
 
-	    const existing = await dbGet("items", row.id);
-	    const localImageState = await resolveLocalImageState(existing, remoteImages, row.updated_at);
-	    const item = {
-      id: row.id,
-      name: row.name || "",
-      productUrl: row.product_url || "",
-      memo: row.memo || "",
-      parentCategory: row.parent_category || "",
-      category: row.category || "",
-      brand: row.brand || "",
-      color: normalizeColor(row.color),
-      sizeLabel: row.size_label || "",
-      shoeSize: row.shoe_size || "",
-      retailPrice: row.retail_price,
-	      purchasePrice: row.purchase_price,
-	      purchaseDate: row.purchase_date || "",
-	      owned: row.owned,
-	      rating: normalizeRating(row.rating ?? row.raw?.rating),
-	      measurements: Object.fromEntries((measurementsByItem.get(row.id) || [])
-        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-        .map((measure) => [measure.custom_label || measure.label, Number(measure.value)])),
-      measurementsDirty: false,
-	      imageIds: localImageState.imageIds,
-	      primaryImageId: localImageState.primaryImageId,
-      remoteImages,
-      imagesDirty: false,
-      externalImageUrl: cleanText(row.image_url || row.raw?.externalImageUrl),
-      externalImageEdit: normalizeImageEdit(row.image_edit || row.raw?.externalImageEdit || existing?.externalImageEdit || defaultImageEdit()),
-      source: existing?.source || "supabase",
-      raw: row.raw || {},
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
+    const existing = await dbGet("items", row.id);
+    const localImageState = await resolveLocalImageState(existing, remoteImages, row.updated_at);
+    const item = supabaseItemFromRow(row, {
+      cleanText,
+      defaultImageEdit,
+      existing,
+      localImageState,
+      measurementsByItem,
+      normalizeColor,
+      normalizeImageEdit,
+      normalizeRating,
+      remoteImages
+    });
 
     await dbPut("items", item);
   }
@@ -3166,163 +2366,6 @@ async function pullFromSupabase(options = {}) {
 
   await loadLocalItems();
   if (!options.silent) render();
-}
-
-async function createSignedImageUrlMap(imageRows) {
-  const paths = uniqueValues((imageRows || []).map((image) => image.storage_path));
-  const signedUrlByPath = new Map();
-  if (!paths.length) return signedUrlByPath;
-
-  const { data, error } = await state.supabase.storage
-    .from("wardrobe-images")
-    .createSignedUrls(paths, 3600);
-
-  if (error) {
-    console.warn("Signed image URLs could not be created", error);
-    return signedUrlByPath;
-  }
-
-  (data || []).forEach((entry) => {
-    if (entry?.path && entry?.signedUrl) {
-      signedUrlByPath.set(entry.path, entry.signedUrl);
-    }
-  });
-
-  return signedUrlByPath;
-}
-
-async function deleteItemFromSupabase(itemId) {
-  if (!state.supabase || !state.session) return;
-  await state.supabase.from("items").delete().eq("id", itemId);
-}
-
-async function deleteImageFromSupabase(imageId, storagePath = "") {
-  if (!state.supabase || !state.session) return;
-
-  if (storagePath) {
-    const { error: storageError } = await state.supabase.storage
-      .from("wardrobe-images")
-      .remove([storagePath]);
-    if (storageError) throw storageError;
-  }
-
-  const { error } = await state.supabase.from("item_images").delete().eq("id", imageId);
-  if (error) throw error;
-}
-
-async function shareSelectedItem() {
-  const item = getSelectedItem();
-  if (!item) return;
-  if (isDraftItem(item)) {
-    showToast("제품 정보를 먼저 저장한 뒤 공유해 주세요.");
-    return;
-  }
-
-  const payload = {
-    title: item.name,
-    items: [sanitizeItemForExport(item)],
-    createdAt: new Date().toISOString()
-  };
-
-  try {
-    if (state.supabase && state.session) {
-      const token = crypto.randomUUID().replace(/-/g, "") + hashString(Date.now().toString());
-      const { error } = await state.supabase.from("share_snapshots").insert({
-        owner_id: state.session.user.id,
-        token,
-        payload,
-        is_active: true
-      });
-      if (error) throw error;
-
-      await copyText(`${window.location.origin}${window.location.pathname}?share=${token}`);
-      showToast("공유 링크를 복사했습니다.");
-      return;
-    }
-
-    const encoded = encodeSharePayload(payload);
-    await copyText(`${window.location.origin}${window.location.pathname}#share=${encoded}`);
-    showToast("로컬 공유 링크를 복사했습니다.");
-  } catch (error) {
-    console.error(error);
-    showToast("공유 링크를 만들지 못했습니다.");
-  }
-}
-
-async function maybeRenderSharedView() {
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get("share");
-  const hashPayload = window.location.hash.startsWith("#share=") ? window.location.hash.slice(7) : "";
-
-  if (!token && !hashPayload) return false;
-
-  let payload = null;
-  if (hashPayload) {
-    payload = decodeSharePayload(hashPayload);
-  } else if (token) {
-    await initSupabase();
-    if (!state.supabase) {
-      renderShareError("공유 링크를 열려면 config.js에 Supabase 설정이 필요합니다.");
-      return true;
-    }
-    const { data, error } = await state.supabase.rpc("get_share_snapshot", { share_token: token });
-    if (error || !data) {
-      renderShareError("공유 항목을 찾지 못했습니다.");
-      return true;
-    }
-    payload = data;
-  }
-
-  if (!payload) {
-    renderShareError("공유 데이터를 읽지 못했습니다.");
-    return true;
-  }
-
-  renderSharedPayload(payload);
-  return true;
-}
-
-function renderSharedPayload(payload) {
-  refs.appShell.hidden = true;
-  refs.shareView.hidden = false;
-  refs.shareTitle.textContent = payload.title || "공유된 옷장";
-  refs.shareItems.innerHTML = (payload.items || []).map((item) => `
-    <article class="item-tile">
-      <div class="image-slot placeholder">${escapeHtml(getInitial(item))}</div>
-      <div class="item-title">
-        <h3>${escapeHtml(item.name || "이름 없는 제품")}</h3>
-        <p>${escapeHtml([item.brand, item.sizeLabel, item.category].filter(Boolean).join(" · ") || "정보 없음")}</p>
-        <div class="chip-row">
-          ${item.color ? `<span class="chip"><span class="color-dot" style="--dot:${escapeAttr(colorToHex(item.color))}"></span>${escapeHtml(item.color)}</span>` : ""}
-          ${item.parentCategory ? `<span class="chip">${escapeHtml(item.parentCategory)}</span>` : ""}
-        </div>
-      </div>
-      ${renderPriceLine(item)}
-    </article>
-  `).join("");
-}
-
-function renderShareError(message) {
-  refs.appShell.hidden = true;
-  refs.shareView.hidden = false;
-  refs.shareTitle.textContent = message;
-  refs.shareItems.innerHTML = "";
-}
-
-async function copyText(text) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.append(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  textarea.remove();
 }
 
 let toastTimer = null;
