@@ -19,7 +19,7 @@ function getStatusCopy(auth: AuthSnapshot) {
     return {
       eyebrow: "Google 로그인",
       title: auth.displayName || auth.email || "로그인된 계정",
-      description: "DB 동기화로 여러 기기에서 같은 옷장을 사용할 수 있습니다.",
+      description: "계정 동기화로 여러 기기에서 같은 옷장을 사용할 수 있습니다.",
     }
   }
 
@@ -27,14 +27,14 @@ function getStatusCopy(auth: AuthSnapshot) {
     return {
       eyebrow: "게스트 모드",
       title: "이 기기의 옷장",
-      description: "현재 옷장은 이 브라우저에만 저장됩니다. Google로 로그인하면 계정 옷장으로 전환합니다.",
+      description: "현재 옷장은 이 브라우저에 저장됩니다. 계정 동기화가 필요할 때만 Google로 전환하세요.",
     }
   }
 
   return {
     eyebrow: "로그아웃 상태",
     title: "로그인이 필요합니다",
-    description: `Google 계정으로 로그인하면 ${BRAND_CONFIG.serviceName}을 이어서 사용할 수 있습니다.`,
+    description: `게스트 모드로 시작하거나, 계정 동기화가 필요하면 Google로 로그인할 수 있습니다.`,
   }
 }
 
@@ -79,15 +79,21 @@ export function MyPage({ onGoCloset }: { onGoCloset: () => void }) {
             로그아웃
           </Button>
         ) : (
-          <Button className="google-login-button my-primary-action" data-action="login" type="button" variant="outline">
+          <Button className="google-login-button my-secondary-action" data-action="login" type="button" variant="outline">
             <GoogleLogo />
-            Google로 로그인
+            Google로 동기화하기
           </Button>
         )}
         {isGuest ? (
           <Button className="button secondary my-secondary-action" data-action="exit-temporary" type="button" variant="outline">
             <LogIn className="size-4" />
             로그인 화면으로 돌아가기
+          </Button>
+        ) : null}
+        {isSignedIn ? (
+          <Button className="button secondary my-secondary-action" data-action="merge-temporary" type="button" variant="outline" disabled={auth.syncing}>
+            <Upload className="size-4" />
+            게스트 옷장 가져오기
           </Button>
         ) : null}
       </section>
@@ -101,7 +107,7 @@ export function MyPage({ onGoCloset }: { onGoCloset: () => void }) {
           <dl className="my-status-list">
             <div>
               <dt>저장 방식</dt>
-              <dd>{isGuest ? "게스트 로컬 저장" : isSignedIn ? "계정 DB 동기화" : "로그인 필요"}</dd>
+              <dd>{isGuest ? "게스트 로컬 저장" : isSignedIn ? "계정 동기화" : "로그인 필요"}</dd>
             </div>
             <div>
               <dt>동기화</dt>
@@ -158,7 +164,7 @@ export function MyPage({ onGoCloset }: { onGoCloset: () => void }) {
             <h3>안내</h3>
           </div>
           <p>
-            게스트 옷장과 로그인 계정 옷장은 분리되어 있습니다. 로그인 후에는 계정에 저장된 옷장을 기준으로 불러옵니다.
+            게스트 옷장과 로그인 계정 옷장은 분리되어 있습니다. 로그인 후에는 계정 옷장을 먼저 불러오고, 필요할 때 게스트 옷장 가져오기로 직접 추가할 수 있습니다.
           </p>
         </div>
 

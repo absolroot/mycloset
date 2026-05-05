@@ -26,22 +26,22 @@ export function LoginPage() {
         <div className="login-copy">
           <p className="login-eyebrow">{BRAND_CONFIG.tagline}</p>
           <h1 id="loginTitle">{BRAND_CONFIG.serviceName}</h1>
-          <p>Google 계정으로 로그인하면 같은 옷장을 이어서 사용할 수 있습니다.</p>
+          <p>게스트로 바로 시작하고, 필요할 때 Google 계정으로 전환할 수 있습니다.</p>
         </div>
 
         <form id="authForm" className="login-actions">
-          <Button className="google-login-button" type="submit" variant="outline">
-            <GoogleLogo />
-            Google로 계속하기
+          <Button className="button primary full guest-login-button" data-action="start-temporary" type="button">
+            게스트 모드로 시작하기
           </Button>
-          <Button className="button secondary full" data-action="start-temporary" type="button" variant="outline">
-            게스트 모드로 계속하기
+          <Button className="google-login-button" data-action="login" type="button" variant="outline">
+            <GoogleLogo />
+            Google로 로그인하기
           </Button>
         </form>
 
         <div className="login-local-note">
           <ShieldCheck className="size-4" />
-          <span>게스트 모드는 온라인 연결 없이 이 브라우저에만 저장됩니다.</span>
+          <span>게스트 모드는 이 브라우저에 저장되며, 처음 시작하면 예시 제품 3개가 함께 표시됩니다.</span>
         </div>
       </section>
       <AppFooter compact />

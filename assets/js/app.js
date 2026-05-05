@@ -5,6 +5,7 @@ const DB_NAME = "closet-pwa";
 const TEMP_DB_NAME = "closet-pwa-temporary";
 const TEMP_MODE_STORAGE_KEY = "closet-temporary-mode";
 const GUEST_MODE_STORAGE_KEY = TEMP_MODE_STORAGE_KEY;
+const PENDING_GUEST_MERGE_PROMPT_KEY = "closet-pending-guest-merge-prompt";
 const DB_VERSION = 1;
 const FULL_PULL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const SIGNED_IMAGE_URL_MAX_AGE_MS = 45 * 60 * 1000;
@@ -82,6 +83,7 @@ const {
 } = window.closetRenderUtils;
 const {
   clonePlainItem,
+  csvRowsToItems,
   csvToItems,
   getMeasurementFieldsForItem,
   getPrimaryImage,
@@ -92,6 +94,16 @@ const {
   sanitizeMeasurementData,
   sameMeasurements
 } = window.closetItemUtils;
+const {
+  getGuestSampleImageUrl,
+  pickGuestSampleRows
+} = window.closetGuestSampleUtils;
+const {
+  buildGuestImportItem,
+  getMergeIdentityKey,
+  isGuestSampleItem,
+  withGuestSampleLabel
+} = window.closetGuestMergeUtils;
 const {
   createClient: createSupabaseClient,
   createSignedImageUrlMap,
@@ -190,11 +202,16 @@ async function init() {
   }
 
   if (shouldRequireAuth()) {
-    state.items = [];
-    state.selectedId = null;
-    state.loading = false;
-    render();
-    showAuthDialog({ once: true });
+    if (isLoginPath()) {
+      state.items = [];
+      state.selectedId = null;
+      state.loading = false;
+      render();
+      showAuthDialog({ once: true });
+      return;
+    }
+
+    await startTemporarySession({ silent: true });
     return;
   }
 
@@ -209,6 +226,7 @@ async function init() {
   }
 
   render();
+  await maybeShowGuestMergePrompt();
 }
 
 async function prepareSessionDataLoad() {
@@ -263,6 +281,7 @@ function cacheRefs() {
   refs.emptyState = document.querySelector("#emptyState");
   refs.detailPanel = document.querySelector("#detailPanel");
   refs.csvFileInput = document.querySelector("#csvFileInput");
+  refs.guestMergeDialog = document.querySelector("#guestMergeDialog");
   refs.toast = document.querySelector("#toast");
 }
 
@@ -402,7 +421,7 @@ async function startTemporarySession(options = {}) {
 
   await loadLocalItems();
   if (!state.items.length) {
-    await importDefaultCsv({ silent: true, useTempImages: true });
+    await importGuestSampleCsv({ silent: true });
   }
   await loadLocalItems();
 
@@ -424,6 +443,11 @@ async function exitTemporarySession() {
 function getTemporaryImageUrl(index) {
   const urls = Array.isArray(window.WARDROBE_TEMP_IMAGE_URLS) ? window.WARDROBE_TEMP_IMAGE_URLS : [];
   return urls[index % urls.length] || "";
+}
+
+function getDefaultCsvUrl() {
+  if (window.WARDROBE_DEFAULT_CSV_URL) return window.WARDROBE_DEFAULT_CSV_URL;
+  return `./${DEFAULT_CSV_FILE.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 function handleDocumentClick(event) {
@@ -500,6 +524,17 @@ function handleDocumentClick(event) {
     case "exit-temporary":
       exitTemporarySession();
       break;
+    case "merge-temporary":
+      importTemporaryItemsToAccount();
+      break;
+    case "confirm-merge-temporary":
+      importTemporaryItemsToAccount({ clearPrompt: true });
+      closeGuestMergeDialog();
+      break;
+    case "dismiss-merge-temporary":
+      window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+      closeGuestMergeDialog();
+      break;
     case "close-detail":
       closeDetail();
       break;
@@ -573,7 +608,11 @@ async function handleDocumentSubmit(event) {
 }
 
 async function openDatabase() {
-  return storageOpenDatabase({ name: getDatabaseName(), version: DB_VERSION });
+  return openNamedDatabase(getDatabaseName());
+}
+
+async function openNamedDatabase(name) {
+  return storageOpenDatabase({ name, version: DB_VERSION });
 }
 
 function getDatabaseName() {
@@ -669,7 +708,7 @@ async function importDefaultCsv(options = {}) {
   }
 
   try {
-    const defaultCsvUrl = `./${DEFAULT_CSV_FILE.split("/").map(encodeURIComponent).join("/")}`;
+    const defaultCsvUrl = getDefaultCsvUrl();
     const response = await fetch(defaultCsvUrl);
     if (!response.ok) throw new Error(`CSV fetch failed: ${response.status}`);
     const text = await response.text();
@@ -680,6 +719,168 @@ async function importDefaultCsv(options = {}) {
   } catch (error) {
     console.warn(error);
     if (!options.silent) showToast("CSV 자동 가져오기에 실패했습니다. 파일 선택으로 가져올 수 있습니다.");
+  }
+}
+
+async function importGuestSampleCsv(options = {}) {
+  try {
+    const response = await fetch(getDefaultCsvUrl());
+    if (!response.ok) throw new Error(`Guest sample CSV fetch failed: ${response.status}`);
+
+    const text = await response.text();
+    const rows = window.closetCsvUtils.parseCsv(text);
+    const sampleRows = pickGuestSampleRows(rows);
+    if (sampleRows.length !== 3) throw new Error("Guest sample rows were not found in the default CSV.");
+
+    const items = csvRowsToItems(sampleRows, {
+      getTemporaryImageUrl: getGuestSampleImageUrl,
+      useTempImages: true
+    }).map(withGuestSampleLabel);
+    await upsertItems(items);
+    await loadLocalItems();
+    if (!options.silent) showToast(`${items.length}개 예시 제품을 불러왔습니다.`);
+  } catch (error) {
+    console.warn(error);
+    if (!options.silent) showToast("예시 제품을 불러오지 못했습니다.");
+  }
+}
+
+async function getGuestSampleItemIds() {
+  try {
+    const response = await fetch(getDefaultCsvUrl());
+    if (!response.ok) return new Set();
+
+    const text = await response.text();
+    const rows = window.closetCsvUtils.parseCsv(text);
+    return new Set(csvRowsToItems(pickGuestSampleRows(rows)).map((item) => item.id));
+  } catch (error) {
+    console.warn("Guest sample IDs could not be resolved", error);
+    return new Set();
+  }
+}
+
+async function copyTemporaryImagesToAccount(item, imageById) {
+  const copiedImageIds = [];
+  const sourceImageIds = Array.isArray(item.imageIds) ? item.imageIds : [];
+
+  for (const sourceImageId of sourceImageIds) {
+    const sourceImage = imageById.get(sourceImageId);
+    if (!sourceImage?.blob) continue;
+
+    const existingImage = await dbGet("images", sourceImage.id);
+    const image = {
+      ...sourceImage,
+      id: existingImage ? `img-${crypto.randomUUID()}` : sourceImage.id,
+      itemId: item.id
+    };
+    await dbPut("images", image);
+    copiedImageIds.push(image.id);
+  }
+
+  return copiedImageIds;
+}
+
+async function getImportableTemporaryData() {
+  let tempDb = null;
+  try {
+    tempDb = await openNamedDatabase(TEMP_DB_NAME);
+    const [tempItems, tempImages] = await Promise.all([
+      storageAll(tempDb, "items"),
+      storageAll(tempDb, "images")
+    ]);
+    const sampleIds = await getGuestSampleItemIds();
+    const items = tempItems
+      .map((item) => normalizeItemData(item))
+      .filter((item) => item && !isGuestSampleItem(item, sampleIds));
+
+    return { items, images: tempImages };
+  } finally {
+    tempDb?.close?.();
+  }
+}
+
+async function getImportableTemporaryItemCount() {
+  const { items } = await getImportableTemporaryData();
+  return items.length;
+}
+
+function closeGuestMergeDialog() {
+  refs.guestMergeDialog?.close?.();
+}
+
+async function maybeShowGuestMergePrompt() {
+  if (state.temporary || !state.session) return;
+  if (!window.localStorage.getItem(PENDING_GUEST_MERGE_PROMPT_KEY)) return;
+
+  const count = await getImportableTemporaryItemCount();
+  if (!count) {
+    window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+    return;
+  }
+
+  const countNode = refs.guestMergeDialog?.querySelector("[data-guest-merge-count]");
+  if (countNode) countNode.textContent = `${count}개`;
+  if (refs.guestMergeDialog?.open) return;
+  refs.guestMergeDialog?.showModal?.();
+}
+
+async function importTemporaryItemsToAccount(options = {}) {
+  if (state.temporary || !state.session || !state.supabase) {
+    showToast("Google 로그인 후 게스트 옷장을 가져올 수 있습니다.");
+    return;
+  }
+
+  try {
+    const { items: importableItems, images: tempImages } = await getImportableTemporaryData();
+
+    if (!importableItems.length) {
+      if (options.clearPrompt) window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+      showToast("가져올 게스트 제품이 없습니다.");
+      return;
+    }
+
+    await loadLocalItems();
+    const existingKeys = new Set(state.items.map(getMergeIdentityKey).filter(Boolean));
+    const imageById = new Map(tempImages.filter((image) => image?.id).map((image) => [image.id, image]));
+    const importedIds = [];
+    let skippedCount = 0;
+
+    for (const sourceItem of importableItems) {
+      const identityKey = getMergeIdentityKey(sourceItem);
+      if (identityKey && existingKeys.has(identityKey)) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const existingItem = await dbGet("items", sourceItem.id);
+      const item = normalizeItemData(buildGuestImportItem(sourceItem, { existingItem }));
+      item.imageIds = await copyTemporaryImagesToAccount(item, imageById);
+      item.primaryImageId = item.imageIds.includes(sourceItem.primaryImageId) ? sourceItem.primaryImageId : item.imageIds[0] || null;
+      item.imagesDirty = item.imageIds.length > 0 || Boolean(item.imagesDirty);
+      item.measurementsDirty = Boolean(item.measurementsDirty || Object.keys(item.measurements || {}).length);
+
+      await dbPut("items", item);
+      importedIds.push(item.id);
+      if (identityKey) existingKeys.add(identityKey);
+    }
+
+    if (!importedIds.length) {
+      if (options.clearPrompt) window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+      showToast(skippedCount ? "이미 계정 옷장에 있는 게스트 제품입니다." : "가져올 게스트 제품이 없습니다.");
+      return;
+    }
+
+    await loadLocalItems();
+    queueAutoSyncItems(importedIds);
+    await syncQueuedChanges({ silent: true });
+    if (options.clearPrompt) window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+    render();
+    showToast(skippedCount
+      ? `${importedIds.length}개를 가져왔고 ${skippedCount}개는 중복으로 건너뛰었습니다.`
+      : `${importedIds.length}개 게스트 제품을 계정 옷장으로 가져왔습니다.`);
+  } catch (error) {
+    console.error(error);
+    showToast("게스트 옷장을 가져오지 못했습니다.");
   }
 }
 
@@ -1884,10 +2085,15 @@ async function initSupabase() {
           resumeAuthenticatedSession();
         }
       } else if (shouldRequireAuth()) {
-        state.items = [];
-        state.selectedId = null;
-        render();
-        showAuthDialog({ once: true });
+        if (isLoginPath()) {
+          state.items = [];
+          state.selectedId = null;
+          render();
+          showAuthDialog({ once: true });
+          return;
+        }
+
+        startTemporarySession({ silent: true });
       }
     });
 
@@ -1966,6 +2172,10 @@ function shouldRequireAuth() {
   return !isPublicInformationPath() && !state.temporary && !state.session;
 }
 
+function isLoginPath() {
+  return window.location.pathname === "/login";
+}
+
 function requireAuthenticatedMutation() {
   if (state.temporary || state.session) return true;
   showAuthDialog();
@@ -2012,6 +2222,7 @@ async function resumeAuthenticatedSession() {
   } finally {
     state.loading = false;
     render();
+    await maybeShowGuestMergePrompt();
   }
 }
 
@@ -2146,6 +2357,18 @@ function hasPendingSync() {
 
 async function requestGoogleLogin() {
   const wasTemporary = state.temporary;
+  if (wasTemporary) {
+    const importableCount = await getImportableTemporaryItemCount();
+    if (importableCount) {
+      window.localStorage.setItem(PENDING_GUEST_MERGE_PROMPT_KEY, JSON.stringify({
+        count: importableCount,
+        requestedAt: new Date().toISOString()
+      }));
+    } else {
+      window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+    }
+  }
+
   if (wasTemporary) {
     state.temporary = false;
     window.localStorage.removeItem(GUEST_MODE_STORAGE_KEY);

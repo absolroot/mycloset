@@ -469,6 +469,33 @@ function App() {
         </form>
       </dialog>
 
+      <dialog id="guestMergeDialog" className="dialog">
+        <form method="dialog">
+          <header className="dialog-header">
+            <h2>게스트 옷장을 가져올까요?</h2>
+            <Button
+              aria-label="닫기"
+              className="icon-button"
+              data-action="dismiss-merge-temporary"
+              type="button"
+              variant="ghost"
+            >
+              <X className="size-5" />
+            </Button>
+          </header>
+          <p className="dialog-copy">
+            게스트 모드에서 만든 제품 <strong data-guest-merge-count>0개</strong>가 있습니다. 계정 옷장을 먼저 불러왔고,
+            원하면 게스트 제품만 추가로 가져올 수 있습니다. 예시 제품은 가져오지 않습니다.
+          </p>
+          <Button className="button primary full" data-action="confirm-merge-temporary" type="button">
+            게스트 제품 가져오기
+          </Button>
+          <Button className="button secondary full" data-action="dismiss-merge-temporary" type="button" variant="outline">
+            나중에 하기
+          </Button>
+        </form>
+      </dialog>
+
       <div id="toast" className="toast" role="status" aria-live="polite" />
 
       {activePage !== "login" && showScrollTop ? (

@@ -7,6 +7,8 @@ import exportUtilsUrl from "../../assets/js/closet-export-utils.js?url"
 import filterUtilsUrl from "../../assets/js/closet-filter-utils.js?url"
 import formUtilsUrl from "../../assets/js/closet-form-utils.js?url"
 import formatUtilsUrl from "../../assets/js/closet-format-utils.js?url"
+import guestMergeUtilsUrl from "../../assets/js/closet-guest-merge-utils.js?url"
+import guestSampleUtilsUrl from "../../assets/js/closet-guest-sample-utils.js?url"
 import imageUtilsUrl from "../../assets/js/closet-image-utils.js?url"
 import imageProviderUtilsUrl from "../../assets/js/closet-image-provider-utils.js?url"
 import imageStateUtilsUrl from "../../assets/js/closet-image-state-utils.js?url"
@@ -16,8 +18,16 @@ import renderUtilsUrl from "../../assets/js/closet-render-utils.js?url"
 import storageUtilsUrl from "../../assets/js/closet-storage-utils.js?url"
 import supabaseUtilsUrl from "../../assets/js/closet-supabase-utils.js?url"
 import legacyAppUrl from "../../assets/js/app.js?url"
+import defaultGuestCsvUrl from "../../assets/temp/Closet 137abb41507c80699008e26e88fa26d9_all (2).csv?url"
+import appleWatchSampleImageUrl from "../../assets/temp/f_005fc5.webp?url"
+import newBalanceSampleImageUrl from "../../assets/temp/-3.webp?url"
+import uniqloShirtSampleImageUrl from "../../assets/temp/f_005fd1.webp?url"
 
-const tempImageUrls: string[] = []
+const guestSampleImageUrls = [
+  newBalanceSampleImageUrl,
+  appleWatchSampleImageUrl,
+  uniqloShirtSampleImageUrl,
+]
 
 declare global {
   interface Window {
@@ -32,6 +42,8 @@ declare global {
       supabaseAnonKey?: string
     }
     WARDROBE_SUPABASE_CREATE_CLIENT?: typeof createClient
+    WARDROBE_DEFAULT_CSV_URL?: string
+    WARDROBE_GUEST_SAMPLE_IMAGE_URLS?: string[]
     WARDROBE_INTERNAL_DEMO_ENABLED?: boolean
     WARDROBE_TEMP_IMAGE_URLS?: string[]
   }
@@ -42,8 +54,10 @@ export function useLegacyClosetRuntime() {
     if (window.__closetLegacyLoaded) return
     window.__closetLegacyLoaded = true
     window.WARDROBE_SUPABASE_CREATE_CLIENT = createClient
+    window.WARDROBE_DEFAULT_CSV_URL = defaultGuestCsvUrl
+    window.WARDROBE_GUEST_SAMPLE_IMAGE_URLS = guestSampleImageUrls
     window.WARDROBE_INTERNAL_DEMO_ENABLED = import.meta.env.DEV
-    window.WARDROBE_TEMP_IMAGE_URLS = tempImageUrls
+    window.WARDROBE_TEMP_IMAGE_URLS = guestSampleImageUrls
 
     const envConfig = {
       imageStorage: {
@@ -61,6 +75,8 @@ export function useLegacyClosetRuntime() {
       { src: categoryUtilsUrl, name: "closetCategoryUtils" },
       { src: filterUtilsUrl, name: "closetFilterUtils" },
       { src: formUtilsUrl, name: "closetFormUtils" },
+      { src: guestSampleUtilsUrl, name: "closetGuestSampleUtils" },
+      { src: guestMergeUtilsUrl, name: "closetGuestMergeUtils" },
       { src: imageUtilsUrl, name: "closetImageUtils" },
       { src: imageProviderUtilsUrl, name: "closetImageProviderUtils" },
       { src: imageStateUtilsUrl, name: "closetImageStateUtils" },

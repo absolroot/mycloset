@@ -36,6 +36,10 @@
 
   function csvToItems(text, options = {}) {
     const rows = window.closetCsvUtils.parseCsv(text);
+    return csvRowsToItems(rows, options);
+  }
+
+  function csvRowsToItems(rows, options = {}) {
     return rows.map((row, index) => csvRowToItem(row, index, options));
   }
 
@@ -200,6 +204,7 @@
 
   window.closetItemUtils = {
     clonePlainItem,
+    csvRowsToItems,
     csvToItems,
     getMeasurementFieldsForItem,
     getPrimaryImage,
