@@ -1,6 +1,6 @@
 "use strict";
 
-const DEFAULT_CSV_FILE = "Closet 137abb41507c80699008e26e88fa26d9_all (2).csv";
+const DEFAULT_CSV_FILE = "assets/temp/Closet 137abb41507c80699008e26e88fa26d9_all (2).csv";
 const DB_NAME = "closet-pwa";
 const TEMP_DB_NAME = "closet-pwa-temporary";
 const TEMP_MODE_STORAGE_KEY = "closet-temporary-mode";
@@ -663,8 +663,14 @@ async function pruneLocalItems(remoteIds) {
 }
 
 async function importDefaultCsv(options = {}) {
+  if (!window.WARDROBE_INTERNAL_DEMO_ENABLED) {
+    if (!options.silent) showToast("기본 CSV는 로컬 개발 모드에서만 불러올 수 있습니다.");
+    return;
+  }
+
   try {
-    const response = await fetch(`./${encodeURIComponent(DEFAULT_CSV_FILE)}`);
+    const defaultCsvUrl = `./${DEFAULT_CSV_FILE.split("/").map(encodeURIComponent).join("/")}`;
+    const response = await fetch(defaultCsvUrl);
     if (!response.ok) throw new Error(`CSV fetch failed: ${response.status}`);
     const text = await response.text();
     const items = csvToItems(text, { getTemporaryImageUrl, useTempImages: Boolean(options.useTempImages) });

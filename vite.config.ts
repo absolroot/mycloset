@@ -22,7 +22,6 @@ function copyRuntimeFiles() {
     "config.js",
     "config.example.js",
     "sw.js",
-    "Closet 137abb41507c80699008e26e88fa26d9_all (2).csv",
   ]
 
   return {

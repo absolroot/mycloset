@@ -105,7 +105,8 @@ npm run build
 - `config.js`
 - `config.example.js`
 - `sw.js`
-- 샘플/기본 CSV 파일
+
+로컬 내부 테스트용 CSV와 임시 이미지는 `assets/temp/`에 둘 수 있지만, 배포 산출물에는 포함하지 않습니다.
 
 ## 내 데이터로 쓰기
 

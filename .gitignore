@@ -9,6 +9,7 @@ build/
 # Generated/import scratch assets
 assets/temp/
 tmp/
+Closet 137abb41507c80699008e26e88fa26d9_all*.csv
 
 # Local generated artifacts
 /artifacts/logs/*
