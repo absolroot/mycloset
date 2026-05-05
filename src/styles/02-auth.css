@@ -1,0 +1,168 @@
+/* Login and guest-entry surfaces. */
+
+.login-page {
+  display: flex;
+  position: relative;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100vw;
+  min-height: 100svh;
+  align-items: center;
+  overflow-x: hidden;
+  padding: max(28px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--card) 86%, transparent), color-mix(in oklch, var(--muted) 72%, transparent)),
+    var(--background);
+}
+
+.theme-toggle-button {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0;
+}
+
+.theme-toggle-button:hover {
+  background: var(--accent);
+}
+
+.theme-toggle-button[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--ring) 70%, var(--border));
+}
+
+.login-theme-action {
+  position: absolute;
+  top: max(18px, env(safe-area-inset-top));
+  right: max(18px, env(safe-area-inset-right));
+  z-index: 2;
+}
+
+.login-page .app-footer {
+  width: min(100%, 720px);
+  max-width: calc(100vw - 36px);
+  border-top: 0;
+  background: transparent;
+  padding: 18px 0 0;
+}
+
+.login-panel {
+  display: grid;
+  width: 100%;
+  max-width: min(420px, calc(100vw - 36px));
+  min-width: 0;
+  margin: auto 0;
+  gap: 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: clamp(24px, 5vw, 36px);
+  box-shadow: var(--shadow-soft);
+}
+
+.login-brand-mark {
+  display: inline-flex;
+  width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.login-brand-mark img {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+.login-copy {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.login-eyebrow {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.login-copy h1 {
+  margin: 0;
+  font-family: "Black Han Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 36px;
+  font-synthesis-weight: none;
+  font-weight: 400;
+  letter-spacing: -0.05rem;
+  line-height: 1;
+}
+
+.login-copy p {
+  min-width: 0;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 15px;
+  line-height: 1.65;
+  line-break: anywhere;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.login-actions {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.google-login-button {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+  gap: 10px;
+  border-color: color-mix(in oklch, var(--border) 78%, var(--foreground));
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 650;
+}
+
+.google-login-button:hover {
+  background: var(--accent);
+}
+
+.google-logo {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.login-local-note {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-local-note svg {
+  margin-top: 2px;
+  flex: 0 0 auto;
+  color: var(--foreground);
+}
+
+.login-local-note span {
+  min-width: 0;
+  line-break: anywhere;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

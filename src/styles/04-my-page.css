@@ -1,0 +1,251 @@
+/* My Page account, settings, backup, and legal navigation surfaces. */
+
+.my-page {
+  display: grid;
+  width: min(100%, 1120px);
+  gap: 18px;
+  margin: 0 auto;
+  padding: 28px max(20px, env(safe-area-inset-left)) 42px max(20px, env(safe-area-inset-right));
+}
+
+.my-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: clamp(18px, 3vw, 28px);
+  box-shadow: var(--shadow-soft);
+}
+
+.my-avatar {
+  display: inline-grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.my-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.my-identity {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.my-identity h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: clamp(26px, 4vw, 38px);
+  font-weight: 760;
+  line-height: 1.1;
+}
+
+.my-identity p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.my-email {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.my-email svg {
+  flex: 0 0 auto;
+}
+
+.my-action-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.my-primary-action,
+.my-secondary-action {
+  min-height: 44px;
+  gap: 8px;
+  padding-inline: 16px;
+}
+
+.my-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.my-section {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 16px;
+}
+
+.my-theme-section {
+  display: none;
+}
+
+.my-note-section {
+  grid-column: 1 / -1;
+}
+
+.my-legal-section {
+  grid-column: 1 / -1;
+}
+
+.my-section-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.my-section-heading svg {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+
+.my-section-heading h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 720;
+  line-height: 1.2;
+}
+
+.my-status-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.my-status-list div {
+  display: grid;
+  grid-template-columns: minmax(76px, auto) minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+}
+
+.my-status-list dt {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.my-status-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.my-menu-list {
+  display: grid;
+  gap: 4px;
+}
+
+.my-menu-list button,
+.my-menu-list a {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.my-menu-list button:hover,
+.my-menu-list a:hover {
+  background: var(--accent);
+}
+
+.my-menu-list a span {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.my-menu-chevron {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+
+.my-legal-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.my-legal-list a {
+  min-height: 46px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--muted) 44%, transparent);
+}
+
+.my-setting-row {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--muted) 36%, transparent);
+  padding: 8px 10px;
+}
+
+.my-setting-row > span {
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.my-theme-toggle {
+  flex: 0 0 auto;
+}
+
+.my-note-section p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.6;
+}

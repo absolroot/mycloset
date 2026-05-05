@@ -2,6 +2,7 @@ import { ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BRAND_CONFIG } from "./brand/brandConfig"
 import { AppFooter } from "./legal/AppFooter"
+import { ThemeToggle } from "./theme/ThemeToggle"
 import appIconUrl from "../assets/icon.svg?url"
 
 function GoogleLogo() {
@@ -18,6 +19,7 @@ function GoogleLogo() {
 export function LoginPage() {
   return (
     <main className="login-page" aria-labelledby="loginTitle">
+      <ThemeToggle className="login-theme-action" />
       <section className="login-panel">
         <div className="login-brand-mark" aria-hidden="true">
           <img src={appIconUrl} alt="" />

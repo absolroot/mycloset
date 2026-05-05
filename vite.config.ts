@@ -28,6 +28,7 @@ function copyRuntimeFiles() {
     name: "copy-runtime-files",
     closeBundle() {
       const outDir = path.resolve(projectRoot, "dist")
+      fs.mkdirSync(outDir, { recursive: true })
       for (const file of files) {
         const source = path.resolve(projectRoot, file)
         if (!fs.existsSync(source)) continue

@@ -27,7 +27,7 @@ export function SummarySection({ summary }: { summary: AnalysisSummary }) {
         
 	        <Card className="summary-hero-card">
 	          <CardContent className="summary-hero-content">
-	            <div className="summary-icon-wrapper bg-blue-500/10 text-blue-500">
+	            <div className="summary-icon-wrapper is-retail">
 	              <CreditCard className="size-5" />
 	            </div>
 	            <div className="summary-meta">
@@ -40,12 +40,12 @@ export function SummarySection({ summary }: { summary: AnalysisSummary }) {
 
 	        <Card className="summary-hero-card">
 	          <CardContent className="summary-hero-content">
-	            <div className="summary-icon-wrapper bg-green-500/10 text-green-500">
+	            <div className="summary-icon-wrapper is-positive">
 	              <Tag className="size-5" />
 	            </div>
 	            <div className="summary-meta">
 	              <span className="summary-label">구매 총액</span>
-	              <div className="summary-value text-green-600 dark:text-green-400"><span className="summary-discount-prefix">{discountLabel}</span> {formatWon(summary.totalPurchasePrice)}</div>
+	              <div className="summary-value is-positive"><span className="summary-discount-prefix">{discountLabel}</span> {formatWon(summary.totalPurchasePrice)}</div>
 	              <p className="summary-desc">절감액 <strong>{formatWon(summary.totalDiscount)}</strong></p>
 	            </div>
 	          </CardContent>
