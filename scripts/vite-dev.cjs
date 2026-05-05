@@ -21,6 +21,7 @@ function parseArgs(argv) {
   let label = ""
   let port = "5176"
   let host = "127.0.0.1"
+  let hasPort = false
   let hasHost = false
   let hasStrictPort = false
   let allowReuse = true
@@ -46,6 +47,7 @@ function parseArgs(argv) {
 
     if (arg === "--port" && argv[index + 1]) {
       port = sanitizeSegment(argv[index + 1]) || port
+      hasPort = true
       viteArgs.push(arg, argv[index + 1])
       index += 1
       continue
@@ -53,6 +55,7 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--port=")) {
       port = sanitizeSegment(arg.slice("--port=".length)) || port
+      hasPort = true
     }
 
     if (arg === "--host") {
@@ -82,6 +85,10 @@ function parseArgs(argv) {
 
   if (!hasHost) {
     viteArgs.push("--host", host)
+  }
+
+  if (!hasPort) {
+    viteArgs.push("--port", port)
   }
 
   if (!hasStrictPort) {
