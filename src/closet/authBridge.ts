@@ -37,7 +37,12 @@ type AuthBridgeWindow = Window & {
 }
 
 function readFallbackAuthSnapshot(): AuthSnapshot {
-  const isGuest = window.localStorage.getItem(GUEST_MODE_STORAGE_KEY) === "1"
+  let isGuest = false
+  try {
+    isGuest = window.localStorage.getItem(GUEST_MODE_STORAGE_KEY) === "1"
+  } catch {
+    isGuest = false
+  }
   return {
     ...EMPTY_AUTH_SNAPSHOT,
     status: isGuest ? "guest" : "signed-out",

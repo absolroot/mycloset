@@ -9,17 +9,28 @@ import { MeasurementSection } from "./components/analysis/MeasurementSection";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { BoxSelect, Infinity } from "lucide-react";
 
+type AnalysisBridgeWindow = Window & {
+  closetBridge?: {
+    getAnalysisItems?: () => ClosetItem[];
+    subscribeFilters?: (listener: () => void) => () => void;
+  };
+};
+
+function formatCompactWon(value: number) {
+  if (value <= 0) return ""
+  if (value >= 100000000) return `${(value / 100000000).toFixed(1).replace(/\.0$/, "")}억`
+  if (value >= 10000) return `${Math.round(value / 10000).toLocaleString("ko-KR")}만`
+  return value.toLocaleString("ko-KR")
+}
+
 export default function AnalysisPage() {
   const [items, setItems] = useState<ClosetItem[]>([]);
   const [ownedOnly, setOwnedOnly] = useState(true);
 
   useEffect(() => {
     const fetchItems = () => {
-      // @ts-ignore
-      if (window.closetBridge && window.closetBridge.getAnalysisItems) {
-        // @ts-ignore
-        setItems(window.closetBridge.getAnalysisItems());
-      }
+      const nextItems = (window as AnalysisBridgeWindow).closetBridge?.getAnalysisItems?.();
+      if (nextItems) setItems(nextItems);
     };
 
     fetchItems();
@@ -29,14 +40,7 @@ export default function AnalysisPage() {
     };
 
     window.addEventListener("closet:filters-change", handleFiltersChange);
-    // fallback if app.js uses subscribeFilters
-    // @ts-ignore
-    let unsubscribe = () => {};
-    // @ts-ignore
-    if (window.closetBridge && window.closetBridge.subscribeFilters) {
-      // @ts-ignore
-      unsubscribe = window.closetBridge.subscribeFilters(() => fetchItems());
-    }
+    const unsubscribe = (window as AnalysisBridgeWindow).closetBridge?.subscribeFilters?.(() => fetchItems()) ?? (() => {});
 
     return () => {
       window.removeEventListener("closet:filters-change", handleFiltersChange);
@@ -52,6 +56,14 @@ export default function AnalysisPage() {
   const colorStats = useMemo(() => calculateColorStats(filteredItems), [filteredItems]);
   const brandStats = useMemo(() => calculateBrandStats(filteredItems), [filteredItems]);
   const measurementRanges = useMemo(() => calculateMeasurementRanges(filteredItems), [filteredItems]);
+  const titleScope = ownedOnly ? "보유" : "전체";
+  const analysisTitle = `${titleScope} ${filteredItems.length.toLocaleString("ko-KR")}개 분석`;
+
+  useEffect(() => {
+    const purchaseSummary = formatCompactWon(summary.totalPurchasePrice);
+    const title = purchaseSummary ? `${analysisTitle} · 구매 ${purchaseSummary}원` : analysisTitle;
+    window.dispatchEvent(new CustomEvent("closet:analysis-title-change", { detail: { title } }));
+  }, [analysisTitle, summary.totalPurchasePrice]);
 
   return (
     <div className="analysis-page">

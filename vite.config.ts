@@ -15,6 +15,20 @@ export default defineConfig({
       "@": path.resolve(projectRoot, "src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, "/")
+          if (!normalizedId.includes("/node_modules/")) return undefined
+          if (normalizedId.includes("/@supabase/")) {
+            return "vendor-supabase"
+          }
+          return "vendor"
+        },
+      },
+    },
+  },
 })
 
 function copyRuntimeFiles() {

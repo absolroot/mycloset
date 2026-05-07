@@ -1,15 +1,6 @@
 import { ColorStats } from "../../closet/analysisTypes";
+import { colorToHex } from "../../closet/colorUtils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-// colorToHex를 window에서 가져와야 함
-const getColorHex = (colorName: string) => {
-  // @ts-ignore
-  if (window.closetFormatUtils && window.closetFormatUtils.colorToHex) {
-    // @ts-ignore
-    return window.closetFormatUtils.colorToHex(colorName) || "#ccc";
-  }
-  return "#ccc";
-};
 
 export function ColorSection({ stats }: { stats: ColorStats[] }) {
   const formatWon = (value: number) => `${value.toLocaleString("ko-KR")}원`;
@@ -26,7 +17,7 @@ export function ColorSection({ stats }: { stats: ColorStats[] }) {
               <div 
                 key={stat.color} 
                 className="color-stacked-segment" 
-                style={{ width: `${stat.ratio * 100}%`, background: getColorHex(stat.color) }}
+                style={{ width: `${stat.ratio * 100}%`, background: colorToHex(stat.color) }}
                 title={`${stat.color} - ${(stat.ratio * 100).toFixed(1)}%`}
               />
             ))}
@@ -37,7 +28,7 @@ export function ColorSection({ stats }: { stats: ColorStats[] }) {
               <div key={stat.color} className="swatch-item">
                 <div 
                   className="swatch-color border border-border/50 shadow-sm" 
-                  style={{ background: getColorHex(stat.color) }}
+                  style={{ background: colorToHex(stat.color) }}
                 />
                 <div className="swatch-info">
                   <div className="swatch-name">{stat.color}</div>

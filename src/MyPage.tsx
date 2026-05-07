@@ -1,8 +1,17 @@
+import { type MouseEvent } from "react"
 import { Archive, CheckCircle2, ChevronRight, Cloud, Database, Download, FileText, Info, LogIn, LogOut, Mail, Settings2, ShieldCheck, Shirt, Upload, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BRAND_CONFIG } from "./brand/brandConfig"
+import { type AppPage } from "./appRoutes"
 import { useAuthSnapshot, type AuthSnapshot } from "./closet/authBridge"
 import { ThemeToggle } from "./theme/ThemeToggle"
+
+type MyPageNavigationTarget = Extract<AppPage, "closet" | "about" | "terms" | "privacy">
+
+type MyPageProps = {
+  onGoCloset: () => void
+  onNavigate: (page: MyPageNavigationTarget) => void
+}
 
 function GoogleLogo() {
   return (
@@ -48,11 +57,16 @@ function formatSyncState(auth: AuthSnapshot) {
   return auth.supabaseReady ? "연결 준비됨" : "로그인 전"
 }
 
-export function MyPage({ onGoCloset }: { onGoCloset: () => void }) {
+export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
   const auth = useAuthSnapshot()
   const copy = getStatusCopy(auth)
   const isSignedIn = auth.status === "signed-in"
   const isGuest = auth.status === "guest"
+  const navigateInApp = (event: MouseEvent<HTMLAnchorElement>, page: MyPageNavigationTarget) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) return
+    event.preventDefault()
+    onNavigate(page)
+  }
 
   return (
     <main className="my-page" aria-labelledby="myPageTitle">
@@ -186,17 +200,17 @@ export function MyPage({ onGoCloset }: { onGoCloset: () => void }) {
             <h3>서비스 이용정보</h3>
           </div>
           <div className="my-menu-list my-legal-list">
-            <a href="/about">
+            <a href="/about" onClick={(event) => navigateInApp(event, "about")}>
               <Info className="size-4" />
               <span>서비스 소개</span>
               <ChevronRight className="size-4 my-menu-chevron" />
             </a>
-            <a href="/terms">
+            <a href="/terms" onClick={(event) => navigateInApp(event, "terms")}>
               <FileText className="size-4" />
               <span>이용약관</span>
               <ChevronRight className="size-4 my-menu-chevron" />
             </a>
-            <a href="/privacy">
+            <a href="/privacy" onClick={(event) => navigateInApp(event, "privacy")}>
               <ShieldCheck className="size-4" />
               <span>개인정보처리방침</span>
               <ChevronRight className="size-4 my-menu-chevron" />

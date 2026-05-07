@@ -24,33 +24,61 @@ import {
 import { FILTER_TABS, SORT_OPTIONS, type FilterKey } from "./closet/filterTypes"
 import { BRAND_CONFIG } from "./brand/brandConfig"
 import { LoginPage } from "./LoginPage"
-import { MyPage } from "./MyPage"
 import { useAuthSnapshot } from "./closet/authBridge"
 import { useLegacyClosetRuntime } from "./closet/useLegacyClosetRuntime"
 import { AppFooter } from "./legal/AppFooter"
-import { LegalPage } from "./legal/LegalPage"
 import { ThemeToggle } from "./theme/ThemeToggle"
+import { getPageFromPathname, getPathForPage, type AppPage } from "./appRoutes"
+import { useMobileViewportOffset } from "./useMobileViewportOffset"
 
 const ClosetDetailDialog = lazy(() =>
   import("./ClosetDetailDialog").then((module) => ({ default: module.ClosetDetailDialog }))
 )
 
 const AnalysisPage = lazy(() => import("./AnalysisPage"))
+const MyPage = lazy(() => import("./MyPage").then((module) => ({ default: module.MyPage })))
+const LegalPage = lazy(() => import("./legal/LegalPage").then((module) => ({ default: module.LegalPage })))
 
-type AppPage = "closet" | "analysis" | "login" | "my" | "about" | "terms" | "privacy"
+function PageLoading() {
+  return (
+    <div className="content-loading" style={{ height: "100vh" }} role="status" aria-live="polite">
+      <span className="loading-spinner" aria-hidden="true" />
+    </div>
+  )
+}
 
 function getPageFromPath(): AppPage {
-  if (window.location.pathname === "/analysis") return "analysis"
-  if (window.location.pathname === "/login") return "login"
-  if (window.location.pathname === "/my") return "my"
-  if (window.location.pathname === "/about") return "about"
-  if (window.location.pathname === "/terms") return "terms"
-  if (window.location.pathname === "/privacy") return "privacy"
-  return "closet"
+  return getPageFromPathname(window.location.pathname)
+}
+
+type DetailTitleItem = {
+  brand?: string
+  category?: string
+  name?: string
+  parentCategory?: string
+}
+
+type DetailTitlePayload = {
+  item?: DetailTitleItem
+}
+
+function cleanTitlePart(value?: string) {
+  return String(value || "").trim()
+}
+
+function buildDetailContextTitle(item?: DetailTitleItem) {
+  if (!item) return ""
+  const name = cleanTitlePart(item.name)
+  const brand = cleanTitlePart(item.brand)
+  const category = cleanTitlePart(item.category) || cleanTitlePart(item.parentCategory)
+  const detail = [brand, category].filter(Boolean).join(" · ")
+  if (name && detail) return `${name} · ${detail}`
+  return name || detail
 }
 
 function App() {
   useLegacyClosetRuntime()
+  useMobileViewportOffset()
 
   const snapshot = useFilterSnapshot()
   const auth = useAuthSnapshot()
@@ -61,6 +89,8 @@ function App() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [activeSheetTab, setActiveSheetTab] = useState<FilterKey>("colors")
   const [showScrollTop, setShowScrollTop] = useState(false)
+  const [detailTitle, setDetailTitle] = useState("")
+  const [analysisTitle, setAnalysisTitle] = useState("분석")
   const isLoading = snapshot.loading
 
   useEffect(() => {
@@ -82,28 +112,40 @@ function App() {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  const navigateTo = (page: AppPage) => {
-    if (activePage === page) return
-    setActivePage(page)
-    window.history.pushState(
-      {},
-      "",
-      page === "analysis"
-        ? "/analysis"
-        : page === "login"
-          ? "/login"
-          : page === "my"
-            ? "/my"
-            : page === "about"
-              ? "/about"
-              : page === "terms"
-                ? "/terms"
-                : page === "privacy"
-                  ? "/privacy"
-                  : "/",
-    )
+  useEffect(() => {
+    const handleDetailChange = (event: Event) => {
+      const detail = (event as CustomEvent<DetailTitlePayload | null>).detail
+      setDetailTitle(buildDetailContextTitle(detail?.item))
+    }
+
+    window.addEventListener("closet:detail-change", handleDetailChange)
+    return () => window.removeEventListener("closet:detail-change", handleDetailChange)
+  }, [])
+
+  useEffect(() => {
+    const handleAnalysisTitleChange = (event: Event) => {
+      const title = (event as CustomEvent<{ title?: string }>).detail?.title
+      setAnalysisTitle(cleanTitlePart(title) || "분석")
+    }
+
+    window.addEventListener("closet:analysis-title-change", handleAnalysisTitleChange)
+    return () => window.removeEventListener("closet:analysis-title-change", handleAnalysisTitleChange)
+  }, [])
+
+  const navigateTo = (page: AppPage, options: { replace?: boolean; scrollTop?: boolean } = {}) => {
+    const nextPath = getPathForPage(page)
+    const shouldUpdateHistory = window.location.pathname !== nextPath
+    if (activePage !== page) {
+      setActivePage(page)
+    }
+    if (shouldUpdateHistory) {
+      window.history[options.replace ? "replaceState" : "pushState"]({}, "", nextPath)
+    }
     if (page === "closet") {
       window.dispatchEvent(new Event("closet:filters-change"));
+    }
+    if (options.scrollTop) {
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }))
     }
   }
 
@@ -111,9 +153,10 @@ function App() {
   const selectedChildLabel = snapshot.filters.childCategory === "all" ? "전체" : snapshot.filters.childCategory
   const resultTitle = selectedChildLabel === "전체" ? selectedParentLabel : selectedChildLabel
   const navigationPage: "closet" | "analysis" | "my" = activePage === "analysis" || activePage === "my" ? activePage : "closet"
+  const closetContext = detailTitle || `${resultTitle} · ${snapshot.visibleCount}개`
   const topbarContext =
     activePage === "analysis"
-      ? "분석"
+      ? analysisTitle
       : activePage === "my"
         ? "마이"
         : activePage === "about"
@@ -122,7 +165,10 @@ function App() {
             ? "이용약관"
             : activePage === "privacy"
               ? "개인정보처리방침"
-              : `${resultTitle} · ${snapshot.visibleCount}개`
+              : closetContext
+  useEffect(() => {
+    document.title = `${topbarContext} · ${BRAND_CONFIG.serviceName}`
+  }, [topbarContext])
   const brandOptionRows = snapshot.loading ? 4 : Math.min(snapshot.options.brands.length, 7)
   const brandFilterStyle = {
     "--brand-section-min-height": `${Math.min(360, 128 + brandOptionRows * 38)}px`,
@@ -314,17 +360,36 @@ function App() {
         </main>
 
         {activePage === "analysis" && (
-          <Suspense fallback={<div className="content-loading" style={{ height: "100vh" }}><span className="loading-spinner" /></div>}>
+          <Suspense fallback={<PageLoading />}>
             <AnalysisPage />
           </Suspense>
         )}
 
-        {activePage === "my" && <MyPage onGoCloset={() => navigateTo("closet")} />}
-        {activePage === "about" && <LegalPage kind="about" />}
-        {activePage === "terms" && <LegalPage kind="terms" />}
-        {activePage === "privacy" && <LegalPage kind="privacy" />}
+        {activePage === "my" && (
+          <Suspense fallback={<PageLoading />}>
+            <MyPage
+              onGoCloset={() => navigateTo("closet", { scrollTop: true })}
+              onNavigate={(page) => navigateTo(page, { scrollTop: true })}
+            />
+          </Suspense>
+        )}
+        {activePage === "about" && (
+          <Suspense fallback={<PageLoading />}>
+            <LegalPage kind="about" />
+          </Suspense>
+        )}
+        {activePage === "terms" && (
+          <Suspense fallback={<PageLoading />}>
+            <LegalPage kind="terms" />
+          </Suspense>
+        )}
+        {activePage === "privacy" && (
+          <Suspense fallback={<PageLoading />}>
+            <LegalPage kind="privacy" />
+          </Suspense>
+        )}
 
-        <AppFooter />
+        <AppFooter onNavigate={(page) => navigateTo(page, { scrollTop: true })} />
       </div>
 
       <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>

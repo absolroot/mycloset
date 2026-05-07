@@ -178,6 +178,18 @@ function normalizeDateInput(value: string) {
   return text
 }
 
+function safeExternalHref(value: string) {
+  const text = value.trim()
+  if (!text) return ""
+
+  try {
+    const url = new URL(text)
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : ""
+  } catch {
+    return ""
+  }
+}
+
 function buildMeasurementRows(fields: MeasurementField[], measurements: Record<string, unknown> = {}): MeasurementRow[] {
   return fields.map((field) => {
     const value = measurements[field.label]
@@ -454,6 +466,7 @@ export function ClosetDetailDialog() {
   const primaryImage = payload?.primaryImage
   const hasImage = Boolean(imageSrc)
   const isEditing = mode === "edit"
+  const productHref = safeExternalHref(form?.productUrl || "")
   const filledMeasurements = measurementRows.filter((row) => row.label.trim() && row.value.trim())
   const hasBasicReadInfo =
     hasValue(form?.parentCategory) || hasValue(form?.category) || hasValue(form?.brand) || hasValue(form?.color) || hasValue(form?.sizeLabel) || (showShoeSize && hasValue(form?.shoeSize))
@@ -1007,13 +1020,13 @@ export function ClosetDetailDialog() {
 	                    </section>
 	                    ) : null}
 
-	                    {hasValue(form.productUrl) || hasValue(form.retailPrice) || hasValue(form.purchasePrice) || hasValue(form.purchaseDate) ? (
+	                    {productHref || hasValue(form.retailPrice) || hasValue(form.purchasePrice) || hasValue(form.purchaseDate) ? (
 	                    <section className="detail-read-section">
 	                      <h3>구매 정보</h3>
 	                      <dl className="detail-read-list">
-	                        {hasValue(form.productUrl) ? (
+	                        {productHref ? (
 	                          <ViewField label="제품 URL">
-	                            <a href={form.productUrl} target="_blank" rel="noreferrer">
+		                            <a href={productHref} target="_blank" rel="noopener noreferrer">
 	                              링크 열기
 	                            </a>
 	                          </ViewField>

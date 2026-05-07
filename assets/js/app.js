@@ -2064,6 +2064,9 @@ async function initSupabase() {
       initialAuthSettled = true;
       state.session = session || null;
       updateSyncButton();
+      if (state.session && isLoginPath()) {
+        navigateToAppRoot({ replace: true });
+      }
       settleInitialAuth();
     };
 

@@ -1,10 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ClosetItem } from "../../closet/analysisTypes";
 import { calculatePeriodPurchases } from "../../closet/analysisUtils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingDown, Calendar, ShoppingBag, Clock } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+type PeriodOption = "1m" | "3m" | "6m" | "1y" | "3y" | "all";
+
+const PERIOD_OPTIONS: PeriodOption[] = ["1m", "3m", "6m", "1y", "3y", "all"];
+
+function isPeriodOption(value: string): value is PeriodOption {
+  return PERIOD_OPTIONS.includes(value as PeriodOption);
+}
+
+function getImageUrl(item: ClosetItem) {
+  if (item.primaryImageId && item.remoteImages) {
+    const img = item.remoteImages.find((image) => image?.id === item.primaryImageId || image?.url?.includes(item.primaryImageId!));
+    if (img) return img.signedUrl || img.publicUrl || img.url || "";
+  }
+  if (item.remoteImages && item.remoteImages.length > 0) {
+    return item.remoteImages[0].signedUrl || item.remoteImages[0].publicUrl || item.remoteImages[0].url || "";
+  }
+  return item.externalImageUrl || "";
+}
 
 export function ConsumptionSection({ items }: { items: ClosetItem[] }) {
   const periodChartScrollRef = useRef<HTMLDivElement | null>(null);
@@ -17,27 +36,29 @@ export function ConsumptionSection({ items }: { items: ClosetItem[] }) {
     }
     return value.toLocaleString("ko-KR");
   };
-  const [period, setPeriod] = useState<"1m" | "3m" | "6m" | "1y" | "3y" | "all">("6m");
+  const [period, setPeriod] = useState<PeriodOption>("6m");
 
   // 카테고리별 통계
-  const catMap = new Map<string, { count: number; total: number }>();
-  for (const item of items) {
-    if (item.purchasePrice == null) continue;
-    const cat = item.category || item.parentCategory || "미입력";
-    if (!catMap.has(cat)) catMap.set(cat, { count: 0, total: 0 });
-    const stat = catMap.get(cat)!;
-    stat.count++;
-    stat.total += item.purchasePrice;
-  }
+  const sortedCats = useMemo(() => {
+    const catMap = new Map<string, { count: number; total: number }>();
+    for (const item of items) {
+      if (item.purchasePrice == null) continue;
+      const cat = item.category || item.parentCategory || "미입력";
+      if (!catMap.has(cat)) catMap.set(cat, { count: 0, total: 0 });
+      const stat = catMap.get(cat)!;
+      stat.count++;
+      stat.total += item.purchasePrice;
+    }
 
-  const sortedCats = Array.from(catMap.entries())
-    .map(([cat, stat]) => ({ cat, ...stat }))
-    .sort((a, b) => b.total - a.total);
+    return Array.from(catMap.entries())
+      .map(([cat, stat]) => ({ cat, ...stat }))
+      .sort((a, b) => b.total - a.total);
+  }, [items]);
 
   const maxTotalCat = sortedCats.length > 0 ? Math.max(...sortedCats.map(c => c.total)) : 1;
 
   // 월별 통계
-  const periodStats = calculatePeriodPurchases(items, period);
+  const periodStats = useMemo(() => calculatePeriodPurchases(items, period), [items, period]);
   const maxPeriod = periodStats.length > 0 ? Math.max(...periodStats.map(m => m.total)) : 1;
 
   useEffect(() => {
@@ -50,31 +71,20 @@ export function ConsumptionSection({ items }: { items: ClosetItem[] }) {
   }, [period, periodStats.length]);
 
   // 최근 구매 아이템
-  const recentItems = [...items]
+  const recentItems = useMemo(() => [...items]
     .filter(i => i.purchaseDate)
     .sort((a, b) => b.purchaseDate!.localeCompare(a.purchaseDate!))
-    .slice(0, 5);
+    .slice(0, 5), [items]);
 
   // 할인율 상위
-  const discounted = items
+  const discounted = useMemo(() => items
     .filter((i) => i.retailPrice && i.purchasePrice && i.retailPrice > i.purchasePrice)
     .map((i) => ({
       item: i,
       discount: (i.retailPrice as number) - (i.purchasePrice as number),
       rate: (((i.retailPrice as number) - (i.purchasePrice as number)) / (i.retailPrice as number)) * 100,
     }))
-    .sort((a, b) => b.rate - a.rate);
-
-  const getImageUrl = (item: ClosetItem) => {
-    if (item.primaryImageId && item.remoteImages) {
-       const img = item.remoteImages.find(i => i?.id === item.primaryImageId || i?.url?.includes(item.primaryImageId!));
-       if (img) return img.signedUrl || img.publicUrl || img.url || "";
-    }
-    if (item.remoteImages && item.remoteImages.length > 0) {
-      return item.remoteImages[0].signedUrl || item.remoteImages[0].publicUrl || item.remoteImages[0].url || "";
-    }
-    return item.externalImageUrl;
-  };
+    .sort((a, b) => b.rate - a.rate), [items]);
 
   const openItem = (id: string) => {
     window.closetBridge?.openItem?.(id);
@@ -92,7 +102,9 @@ export function ConsumptionSection({ items }: { items: ClosetItem[] }) {
               <Calendar className="size-4 text-primary" />
               시기별 소비 트렌드
             </CardTitle>
-            <Select value={period} onValueChange={(val: any) => setPeriod(val)}>
+            <Select value={period} onValueChange={(val) => {
+              if (isPeriodOption(val)) setPeriod(val);
+            }}>
               <SelectTrigger className="period-select-trigger w-[92px] h-7 px-2 text-[11px]">
                 <SelectValue placeholder="기간 선택" />
               </SelectTrigger>
@@ -185,19 +197,22 @@ export function ConsumptionSection({ items }: { items: ClosetItem[] }) {
               <p className="text-sm text-muted-foreground">데이터가 없습니다.</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                {recentItems.map(item => (
-	                  <button key={item.id} type="button" onClick={() => openItem(item.id)} className="recent-item-card border border-border/60 hover:border-ring rounded-md p-2 bg-card flex flex-col gap-2 transition-all text-left">
-	                    <div 
-	                      className="w-full aspect-[4/5] bg-muted bg-center bg-cover rounded overflow-hidden shadow-sm" 
-                      style={{ backgroundImage: `url(${getImageUrl(item)})` }}
+                {recentItems.map(item => {
+                  const imageUrl = getImageUrl(item);
+                  return (
+		                  <button key={item.id} type="button" onClick={() => openItem(item.id)} className="recent-item-card border border-border/60 hover:border-ring rounded-md p-2 bg-card flex flex-col gap-2 transition-all text-left">
+		                    <div
+		                      className="w-full aspect-[4/5] bg-muted bg-center bg-cover rounded overflow-hidden shadow-sm"
+                      style={imageUrl ? { backgroundImage: `url(${imageUrl})` } : undefined}
                     />
                     <div className="flex flex-col gap-0.5 overflow-hidden">
                       <div className="font-medium text-sm truncate">{item.name || "이름 없음"}</div>
 	                      <div className="text-xs text-muted-foreground truncate">{item.brand || "브랜드 없음"}</div>
 	                      <div className="text-[10px] text-muted-foreground mt-0.5">{item.purchaseDate}</div>
 	                    </div>
-	                  </button>
-	                ))}
+		                  </button>
+                  );
+                })}
               </div>
             )}
           </CardContent>
