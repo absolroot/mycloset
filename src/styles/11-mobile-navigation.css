@@ -14,15 +14,20 @@
 }
 
 @media (max-width: 980px) {
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+
   .app-shell {
     --mobile-nav-height: calc(64px + env(safe-area-inset-bottom));
-    padding-bottom: calc(var(--mobile-nav-height) + var(--mobile-fixed-bottom-offset, 0px));
+    padding-bottom: var(--mobile-nav-height);
   }
 
   .mobile-bottom-nav {
     display: flex;
     position: fixed;
-    bottom: var(--mobile-fixed-bottom-offset, 0px);
+    bottom: 0;
     left: 0;
     right: 0;
     height: var(--mobile-nav-height, calc(64px + env(safe-area-inset-bottom)));
@@ -55,7 +60,7 @@
   .scroll-top-button {
     position: fixed;
     right: max(14px, env(safe-area-inset-right));
-    bottom: calc(var(--mobile-fixed-bottom-offset, 0px) + 76px + env(safe-area-inset-bottom));
+    bottom: calc(76px + env(safe-area-inset-bottom));
     z-index: 39;
     display: inline-flex;
     width: 44px;

@@ -29,7 +29,6 @@ import { useLegacyClosetRuntime } from "./closet/useLegacyClosetRuntime"
 import { AppFooter } from "./legal/AppFooter"
 import { ThemeToggle } from "./theme/ThemeToggle"
 import { getPageFromPathname, getPathForPage, type AppPage } from "./appRoutes"
-import { useMobileViewportOffset } from "./useMobileViewportOffset"
 
 const ClosetDetailDialog = lazy(() =>
   import("./ClosetDetailDialog").then((module) => ({ default: module.ClosetDetailDialog }))
@@ -78,7 +77,6 @@ function buildDetailContextTitle(item?: DetailTitleItem) {
 
 function App() {
   useLegacyClosetRuntime()
-  useMobileViewportOffset()
 
   const snapshot = useFilterSnapshot()
   const auth = useAuthSnapshot()
