@@ -50,6 +50,19 @@ function getPageFromPath(): AppPage {
   return getPageFromPathname(window.location.pathname)
 }
 
+function getAppScrollElement() {
+  return document.querySelector<HTMLElement>("#appShell")
+}
+
+function getAppScrollTop() {
+  return Math.max(window.scrollY, getAppScrollElement()?.scrollTop || 0)
+}
+
+function scrollAppToTop(behavior: ScrollBehavior = "smooth") {
+  getAppScrollElement()?.scrollTo({ top: 0, behavior })
+  window.scrollTo({ top: 0, behavior })
+}
+
 type DetailTitleItem = {
   brand?: string
   category?: string
@@ -104,11 +117,21 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const handleScroll = () => setShowScrollTop(window.scrollY > 720)
+    const appShell = getAppScrollElement()
+    const handleScroll = () => setShowScrollTop(getAppScrollTop() > 720)
     handleScroll()
+    appShell?.addEventListener("scroll", handleScroll, { passive: true })
     window.addEventListener("scroll", handleScroll, { passive: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
+    return () => {
+      appShell?.removeEventListener("scroll", handleScroll)
+      window.removeEventListener("scroll", handleScroll)
+    }
+  }, [activePage])
+
+  useEffect(() => {
+    document.body.classList.toggle("app-shell-scroll-lock", activePage !== "login")
+    return () => document.body.classList.remove("app-shell-scroll-lock")
+  }, [activePage])
 
   useEffect(() => {
     const handleDetailChange = (event: Event) => {
@@ -143,7 +166,7 @@ function App() {
       window.dispatchEvent(new Event("closet:filters-change"));
     }
     if (options.scrollTop) {
-      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }))
+      window.requestAnimationFrame(() => scrollAppToTop())
     }
   }
 
@@ -187,10 +210,10 @@ function App() {
 		              className="topbar-logo"
 		              type="button"
 		              aria-label="홈으로 이동"
-		              onClick={() => {
-		                navigateTo("closet")
-		                window.scrollTo({ top: 0, behavior: "smooth" })
-		              }}
+			              onClick={() => {
+			                navigateTo("closet")
+			                scrollAppToTop()
+			              }}
 		            >
 		              {BRAND_CONFIG.serviceName}
 		            </button>
@@ -568,8 +591,8 @@ function App() {
           aria-label="맨 위로"
           className="scroll-top-button"
           type="button"
-          variant="outline"
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+	          variant="outline"
+	          onClick={() => scrollAppToTop()}
         >
           <ArrowUp className="size-5" />
         </Button>
@@ -577,10 +600,9 @@ function App() {
 
       {activePage !== "login" ? (
       <nav className="mobile-bottom-nav">
-        <button className={`nav-item ${activePage === "closet" ? "active" : ""}`} type="button" onClick={() => {
-          navigateTo("closet");
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}>
+	        <button className={`nav-item ${activePage === "closet" ? "active" : ""}`} type="button" onClick={() => {
+	          navigateTo("closet", { scrollTop: true });
+	        }}>
           <Home className="size-6" />
           <span>홈</span>
         </button>
@@ -598,17 +620,15 @@ function App() {
           <Search className="size-6" />
           <span>검색</span>
         </button>
-        <button className={`nav-item ${activePage === "analysis" ? "active" : ""}`} type="button" onClick={() => {
-          navigateTo("analysis");
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}>
+	        <button className={`nav-item ${activePage === "analysis" ? "active" : ""}`} type="button" onClick={() => {
+	          navigateTo("analysis", { scrollTop: true });
+	        }}>
           <PieChart className="size-6" />
           <span>분석</span>
         </button>
-        <button className={`nav-item ${activePage === "my" ? "active" : ""}`} type="button" onClick={() => {
-          navigateTo("my");
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}>
+	        <button className={`nav-item ${activePage === "my" ? "active" : ""}`} type="button" onClick={() => {
+	          navigateTo("my", { scrollTop: true });
+	        }}>
           <User className="size-6" />
           <span>마이</span>
         </button>

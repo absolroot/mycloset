@@ -617,7 +617,10 @@ export function ClosetDetailDialog() {
 
   const closeDetailToHome = () => {
     window.closetBridge?.closeDetail()
-    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }))
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("#appShell")?.scrollTo({ top: 0, behavior: "smooth" })
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    })
   }
 
   return (
