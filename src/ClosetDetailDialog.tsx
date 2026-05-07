@@ -622,7 +622,7 @@ export function ClosetDetailDialog() {
 
   return (
     <Dialog open={Boolean(payload)} onOpenChange={(open) => !open && window.closetBridge?.closeDetail()}>
-      <DialogContent className="detail-form detail-dialog-content" showCloseButton={false}>
+      <DialogContent className="detail-form detail-dialog-content" showCloseButton={false} useDefaultLayout={false}>
         {payload && form ? (
           isEditing ? (
           <form

@@ -55,11 +55,19 @@
 }
 
 .detail-dialog-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 50;
+  display: grid;
   width: min(1080px, calc(100vw - 48px));
   max-width: min(1080px, calc(100vw - 48px)) !important;
+  gap: 18px;
+  outline: none;
   border-color: var(--border);
   background: var(--card);
   color: var(--foreground);
+  transform: translate3d(-50%, -50%, 0);
 }
 
 .detail-scroll {
