@@ -58,9 +58,13 @@
   }
 
   function csvEscape(value) {
-    const text = String(value ?? "");
+    const text = escapeSpreadsheetFormula(String(value ?? ""));
     if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
     return text;
+  }
+
+  function escapeSpreadsheetFormula(value) {
+    return /^[\t\r\n =+\-@]/.test(value) ? `'${value}` : value;
   }
 
   function downloadFile(filename, content, type) {

@@ -31,6 +31,8 @@
     const normalizeRating = options.normalizeRating;
     const hasUploadedImage = Boolean(item.primaryImageId || (item.imageIds || []).length);
     const rating = normalizeRating(item.rating);
+    const normalizeImageUrl = window.closetImageStateUtils?.normalizeImageUrl || ((value) => value || "");
+    const externalImageUrl = hasUploadedImage ? null : normalizeImageUrl(item.externalImageUrl) || null;
 
     return {
       id: item.id,
@@ -42,7 +44,7 @@
       category: item.category || null,
       brand: item.brand || null,
       color: item.color || null,
-      image_url: hasUploadedImage ? null : item.externalImageUrl || null,
+      image_url: externalImageUrl,
       image_edit: item.externalImageEdit || {},
       size_label: item.sizeLabel || null,
       shoe_size: item.shoeSize || null,
@@ -54,7 +56,7 @@
       raw: {
         ...(item.raw || {}),
         rating,
-        externalImageUrl: hasUploadedImage ? null : item.externalImageUrl || null,
+        externalImageUrl,
         externalImageEdit: hasUploadedImage ? null : item.externalImageEdit || null
       },
       created_at: item.createdAt || new Date().toISOString(),
@@ -97,6 +99,7 @@
     const normalizeImageEdit = options.normalizeImageEdit;
     const defaultImageEdit = options.defaultImageEdit;
     const cleanText = options.cleanText;
+    const normalizeImageUrl = window.closetImageStateUtils?.normalizeImageUrl || cleanText;
 
     return {
       id: row.id,
@@ -122,7 +125,7 @@
       primaryImageId: localImageState.primaryImageId,
       remoteImages,
       imagesDirty: false,
-      externalImageUrl: cleanText(row.image_url || row.raw?.externalImageUrl),
+      externalImageUrl: normalizeImageUrl(row.image_url || row.raw?.externalImageUrl),
       externalImageEdit: normalizeImageEdit(row.image_edit || row.raw?.externalImageEdit || existing.externalImageEdit || defaultImageEdit()),
       source: existing.source || "supabase",
       raw: row.raw || {},
@@ -541,6 +544,7 @@
     const { data: existing, error: existingError } = await supabase
       .from("account_deletion_requests")
       .select("id, status, requested_at")
+      .eq("user_id", userId)
       .in("status", ["requested", "processing"])
       .limit(1);
 
