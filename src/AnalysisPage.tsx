@@ -7,7 +7,8 @@ import { ColorSection } from "./components/analysis/ColorSection";
 import { BrandSection } from "./components/analysis/BrandSection";
 import { MeasurementSection } from "./components/analysis/MeasurementSection";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { BoxSelect, Infinity } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BoxSelect, Infinity, Plus } from "lucide-react";
 
 type AnalysisBridgeWindow = Window & {
   closetBridge?: {
@@ -21,6 +22,10 @@ function formatCompactWon(value: number) {
   if (value >= 100000000) return `${(value / 100000000).toFixed(1).replace(/\.0$/, "")}억`
   if (value >= 10000) return `${Math.round(value / 10000).toLocaleString("ko-KR")}만`
   return value.toLocaleString("ko-KR")
+}
+
+function isGuestSampleItem(item: ClosetItem) {
+  return Boolean(item.guestSample || item.name?.trim().startsWith("예시)"));
 }
 
 export default function AnalysisPage() {
@@ -56,6 +61,9 @@ export default function AnalysisPage() {
   const colorStats = useMemo(() => calculateColorStats(filteredItems), [filteredItems]);
   const brandStats = useMemo(() => calculateBrandStats(filteredItems), [filteredItems]);
   const measurementRanges = useMemo(() => calculateMeasurementRanges(filteredItems), [filteredItems]);
+  const sampleCount = useMemo(() => filteredItems.filter(isGuestSampleItem).length, [filteredItems]);
+  const ownCount = Math.max(0, filteredItems.length - sampleCount);
+  const isSampleOnly = sampleCount > 0 && ownCount === 0;
   const titleScope = ownedOnly ? "보유" : "전체";
   const analysisTitle = `${titleScope} ${filteredItems.length.toLocaleString("ko-KR")}개 분석`;
 
@@ -92,6 +100,19 @@ export default function AnalysisPage() {
           </div>
         </header>
       </div>
+
+      {isSampleOnly ? (
+        <section className="analysis-sample-banner" aria-label="예시 데이터 안내">
+          <div>
+            <strong>예시 데이터 기준 미리보기입니다</strong>
+            <p>샘플 {sampleCount.toLocaleString("ko-KR")}개로 분석 구조를 보여주고 있습니다. 내 제품을 하나 저장하면 개인 옷장 기준으로 바뀝니다.</p>
+          </div>
+          <Button className="button primary" data-action="new-item" type="button">
+            <Plus className="size-4" />
+            내 제품 추가
+          </Button>
+        </section>
+      ) : null}
 
       <main className="analysis-content">
         <SummarySection summary={summary} />

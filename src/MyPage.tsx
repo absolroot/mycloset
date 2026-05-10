@@ -94,6 +94,8 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
   const copy = getStatusCopy(auth)
   const isSignedIn = auth.status === "signed-in"
   const isGuest = auth.status === "guest"
+  const sampleItemCount = auth.sampleItemCount ?? 0
+  const ownItemCount = auth.ownItemCount ?? Math.max(0, auth.itemCount - sampleItemCount)
   const navigateInApp = (event: MouseEvent<HTMLAnchorElement>, page: MyPageNavigationTarget) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) return
     event.preventDefault()
@@ -143,6 +145,54 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
             게스트 옷장 가져오기
           </Button>
         ) : null}
+      </section>
+
+      <section className="my-trust-panel" aria-label="저장과 백업 안내">
+        <div className="my-trust-copy">
+          <ShieldCheck className="size-5" />
+          <div>
+            <h3>{isGuest ? "브라우저에 저장 중입니다" : isSignedIn ? "Google 계정 동기화 상태" : "저장 방식을 선택하세요"}</h3>
+            <p>
+              {isGuest
+                ? `내 제품 ${ownItemCount.toLocaleString("ko-KR")}개와 예시 ${sampleItemCount.toLocaleString("ko-KR")}개가 이 기기에 있습니다. 다른 기기에서도 쓰려면 ZIP 백업이나 Google 동기화를 남기세요.`
+                : isSignedIn
+                  ? auth.hasPendingSync
+                    ? "아직 동기화 대기 중인 변경이 있습니다. 지금 동기화를 실행하면 계정 옷장에 반영됩니다."
+                    : "계정 옷장으로 저장됩니다. 로컬 백업을 함께 남기면 이미지까지 따로 보관할 수 있습니다."
+                  : "로그인 전에는 게스트 모드로 먼저 써보고, 필요한 시점에 Google 동기화로 전환할 수 있습니다."}
+            </p>
+          </div>
+        </div>
+        <div className="my-trust-actions">
+          {isGuest ? (
+            <>
+              <Button className="button secondary" data-action="export-zip" type="button" variant="outline">
+                <Archive className="size-4" />
+                ZIP 백업
+              </Button>
+              <Button className="google-login-button" data-action="login" type="button" variant="outline">
+                <GoogleLogo />
+                Google 동기화
+              </Button>
+            </>
+          ) : isSignedIn ? (
+            <>
+              <Button className="button secondary" data-action="sync-now" type="button" variant="outline" disabled={auth.syncing}>
+                <RefreshCw className="size-4" />
+                지금 동기화
+              </Button>
+              <Button className="button secondary" data-action="export-zip" type="button" variant="outline">
+                <Archive className="size-4" />
+                ZIP 백업
+              </Button>
+            </>
+          ) : (
+            <Button className="google-login-button" data-action="login" type="button" variant="outline">
+              <GoogleLogo />
+              Google로 시작
+            </Button>
+          )}
+        </div>
       </section>
 
       <section className="my-grid" aria-label="마이페이지 정보">

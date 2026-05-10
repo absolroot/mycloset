@@ -42,6 +42,7 @@ type ClosetItem = {
   color: string
   externalImageEdit?: ImageEdit
   externalImageUrl?: string
+  guestSample?: boolean
   id: string
   measurements?: Record<string, number | string>
   memo: string
@@ -51,10 +52,12 @@ type ClosetItem = {
   productUrl: string
   purchaseDate: string
   purchasePrice: number | null
+  raw?: Record<string, unknown>
   rating: number | null
   retailPrice: number | null
   shoeSize: string
   sizeLabel: string
+  source?: string
 }
 
 type MeasurementField = {
@@ -103,6 +106,7 @@ type DetailSavePayload = DetailForm & { measurements: Record<string, string> }
 type ClosetBridge = {
   addImageFromUrl: (url: string, item?: DetailSavePayload) => Promise<unknown>
   closeDetail: () => void
+  convertSelectedSampleToOwnItem?: () => Promise<{ ok?: boolean; item?: ClosetItem } | undefined>
   deleteSelectedItem: () => Promise<unknown>
   duplicateSelectedItem: () => Promise<unknown>
   getChildCategoryOptions: (parentCategory: string) => string[]
@@ -227,6 +231,10 @@ function imageStyle(edit: ImageEdit) {
 
 function bridgeResultOk(result: unknown) {
   return !result || (typeof result === "object" && "ok" in result ? Boolean((result as { ok?: boolean }).ok) : true)
+}
+
+function isGuestSampleItem(item?: ClosetItem | null) {
+  return Boolean(item?.guestSample || item?.name?.trim().startsWith("예시)"))
 }
 
 function shouldOpenInEdit(item: ClosetItem) {
@@ -466,6 +474,7 @@ export function ClosetDetailDialog() {
   const primaryImage = payload?.primaryImage
   const hasImage = Boolean(imageSrc)
   const isEditing = mode === "edit"
+  const isGuestSample = isGuestSampleItem(payload?.item)
   const productHref = safeExternalHref(form?.productUrl || "")
   const filledMeasurements = measurementRows.filter((row) => row.label.trim() && row.value.trim())
   const hasBasicReadInfo =
@@ -569,6 +578,17 @@ export function ClosetDetailDialog() {
   const handleDuplicate = async () => {
     const result = await window.closetBridge?.duplicateSelectedItem()
     if (bridgeResultOk(result)) {
+      setMode("edit")
+    }
+  }
+
+  const handleConvertSample = async () => {
+    const result = await window.closetBridge?.convertSelectedSampleToOwnItem?.()
+    if (bridgeResultOk(result)) {
+      if (result?.item) {
+        setForm(itemToForm(result.item))
+        setMeasurementRows(buildMeasurementRows(payload?.measurementFields || [], result.item.measurements))
+      }
       setMode("edit")
     }
   }
@@ -997,8 +1017,20 @@ export function ClosetDetailDialog() {
                     </div>
 		                  </div>
 
-                  <div className="detail-view-info">
-                    <div className="detail-view-title">
+	                  <div className="detail-view-info">
+	                    {isGuestSample ? (
+	                      <section className="detail-sample-callout" aria-label="예시 제품 안내">
+	                        <div>
+	                          <strong>예시 제품입니다</strong>
+	                          <p>구성만 참고하고, 내 제품 초안으로 복사한 뒤 이름과 사진을 바꿔 저장하세요.</p>
+	                        </div>
+	                        <Button className="button primary compact" type="button" onClick={handleConvertSample}>
+	                          <Copy className="size-4" />
+	                          내 제품으로 바꾸기
+	                        </Button>
+	                      </section>
+	                    ) : null}
+	                    <div className="detail-view-title">
                       <h3>{form.name || "새 제품"}</h3>
 	                      {itemMetaSummary(form) ? <p>{itemMetaSummary(form)}</p> : null}
 	                      <RatingControl value={form.rating} disabled={ratingSaving} onChange={handleRatingChange} />

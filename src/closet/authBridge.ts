@@ -15,6 +15,8 @@ export type AuthSnapshot = {
   lastSyncError: boolean
   lastSyncErrorMessage: string
   itemCount: number
+  sampleItemCount?: number
+  ownItemCount?: number
 }
 
 const GUEST_MODE_STORAGE_KEY = "closet-temporary-mode"

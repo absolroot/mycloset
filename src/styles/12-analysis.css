@@ -63,6 +63,43 @@
   gap: 2rem;
 }
 
+.analysis-sample-banner {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid color-mix(in oklch, var(--primary) 18%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--primary) 5%, var(--card));
+  padding: 14px 16px;
+}
+
+.analysis-sample-banner div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.analysis-sample-banner strong {
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 740;
+  line-height: 1.3;
+}
+
+.analysis-sample-banner p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.analysis-sample-banner .button {
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
 .analysis-section {
   display: flex;
   flex-direction: column;
@@ -793,5 +830,14 @@
 @media (max-width: 640px) {
   .analysis-page {
     padding: 1rem;
+  }
+
+  .analysis-sample-banner {
+    display: grid;
+  }
+
+  .analysis-sample-banner .button {
+    width: 100%;
+    justify-content: center;
   }
 }

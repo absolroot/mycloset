@@ -6,6 +6,7 @@ const TEMP_DB_NAME = "closet-pwa-temporary";
 const TEMP_MODE_STORAGE_KEY = "closet-temporary-mode";
 const GUEST_MODE_STORAGE_KEY = TEMP_MODE_STORAGE_KEY;
 const PENDING_GUEST_MERGE_PROMPT_KEY = "closet-pending-guest-merge-prompt";
+const STARTER_PROGRESS_STORAGE_KEY = "closet-starter-checklist-v1";
 const DB_VERSION = 1;
 const FULL_PULL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const SIGNED_IMAGE_URL_MAX_AGE_MS = 45 * 60 * 1000;
@@ -13,6 +14,7 @@ const SYNC_CATEGORY_ROWS = false;
 const HIDDEN_FILTER_COLOR_OPTIONS = new Set(["블루", "네이비", "카키", "와인"]);
 const DEFAULT_COLOR_OPTIONS = window.closetFormatUtils.DEFAULT_COLOR_OPTIONS;
 const PUBLIC_INFORMATION_PATHS = new Set(["/about", "/terms", "/privacy"]);
+const APP_SHELL_PATHS = new Set(["/", "/analysis", "/my"]);
 const {
   MEASURE_FIELDS,
   MEASUREMENT_BY_LABEL,
@@ -103,6 +105,7 @@ const {
   buildGuestImportItem,
   getMergeIdentityKey,
   isGuestSampleItem,
+  stripGuestSamplePrefix,
   withGuestSampleLabel
 } = window.closetGuestMergeUtils;
 const {
@@ -127,6 +130,9 @@ const {
   upsertItem: upsertSupabaseItem
 } = window.closetSupabaseUtils;
 const filterSubscribers = new Set();
+const starterSubscribers = new Set();
+const STARTER_STEP_KEYS = new Set(["sampleOpened", "itemSaved", "analysisViewed", "myViewed"]);
+let lastStarterSignature = "";
 
 const state = {
   db: null,
@@ -290,21 +296,27 @@ function cacheRefs() {
 
 function exposeReactBridge() {
 	window.closetBridge = {
-			  addImageFromUrl: addImageFromUrlValue,
-			  closeDetail,
-			  deleteSelectedItem,
-			  duplicateSelectedItem,
-		  getAuthSnapshot,
-		  getAutocompleteOptions,
+		  addImageFromUrl: addImageFromUrlValue,
+		  closeDetail,
+		  convertSelectedSampleToOwnItem,
+		  createStarterItem: createNewItem,
+		  deleteSelectedItem,
+		  dismissStarterChecklist,
+		  duplicateSelectedItem,
+	  getAuthSnapshot,
+	  getAutocompleteOptions,
 	  getChildCategoryOptions,
 	  getColorOptions,
 	    getFilterSnapshot,
+	    getStarterSnapshot,
 	    getImageUrl,
 	    cacheRemoteImage,
 		    getMeasurementFieldsForItem,
 	    getParentCategoryOptions,
 	    isShoeCategory,
+	    markStarterStep,
 	    openItem: selectItem,
+	    openFirstGuestSample,
 	    removeSelectedImage,
     resetFilters,
 	    saveImageEdit: saveImageEditFromOptions,
@@ -312,9 +324,10 @@ function exposeReactBridge() {
 	    saveSelectedItem: saveSelectedItemFromData,
     setFilters,
     subscribeFilters,
+    subscribeStarter,
     getAnalysisItems: () => state.items.map(item => ({...item})),
     uploadImageFile: uploadSelectedImageFile
-  };
+	  };
 }
 
 function bindEvents() {
@@ -389,20 +402,47 @@ async function registerServiceWorker() {
   }
 }
 
+function safeLocalStorageGet(key) {
+  try {
+    return window.localStorage.getItem(key) || "";
+  } catch (error) {
+    console.warn("Local storage read failed", error);
+    return "";
+  }
+}
+
+function safeLocalStorageSet(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.warn("Local storage write failed", error);
+    return false;
+  }
+}
+
+function safeLocalStorageRemove(key) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch (error) {
+    console.warn("Local storage remove failed", error);
+  }
+}
+
 function readTemporaryModePreference() {
   const params = new URLSearchParams(window.location.search);
   const requested = ["guest", "local", "temp", "temporary", "demo", "test"].some((key) => params.has(key));
   if (requested) {
-    window.localStorage.setItem(GUEST_MODE_STORAGE_KEY, "1");
+    safeLocalStorageSet(GUEST_MODE_STORAGE_KEY, "1");
     return true;
   }
 
-  return window.localStorage.getItem(GUEST_MODE_STORAGE_KEY) === "1";
+  return safeLocalStorageGet(GUEST_MODE_STORAGE_KEY) === "1";
 }
 
 async function startTemporarySession(options = {}) {
   state.temporary = true;
-  window.localStorage.setItem(GUEST_MODE_STORAGE_KEY, "1");
+  safeLocalStorageSet(GUEST_MODE_STORAGE_KEY, "1");
 
   if (state.db?.name !== TEMP_DB_NAME) {
     state.db?.close?.();
@@ -430,14 +470,12 @@ async function startTemporarySession(options = {}) {
 
   state.loading = false;
   render();
-  if (!isPublicInformationPath()) {
-    navigateToAppRoot({ replace: true });
-  }
+  normalizeTemporarySessionRoute({ replace: true });
   if (!options.silent) showToast("게스트 모드가 시작되었습니다. 데이터는 이 기기에만 저장됩니다.");
 }
 
 async function exitTemporarySession() {
-  window.localStorage.removeItem(GUEST_MODE_STORAGE_KEY);
+  safeLocalStorageRemove(GUEST_MODE_STORAGE_KEY);
   state.temporary = false;
   showToast("게스트 모드를 종료했습니다. 새로고침하면 로그인 모드로 돌아갑니다.");
   window.setTimeout(() => window.location.reload(), 650);
@@ -515,6 +553,15 @@ function handleDocumentClick(event) {
     case "new-item":
       createNewItem();
       break;
+    case "open-first-guest-sample":
+      openFirstGuestSample();
+      break;
+    case "dismiss-starter":
+      dismissStarterChecklist();
+      break;
+    case "mark-starter-step":
+      markStarterStep(action.dataset.step);
+      break;
     case "logout":
       requestLogout();
       break;
@@ -547,7 +594,7 @@ function handleDocumentClick(event) {
       closeGuestMergeDialog();
       break;
     case "dismiss-merge-temporary":
-      window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+      safeLocalStorageRemove(PENDING_GUEST_MERGE_PROMPT_KEY);
       closeGuestMergeDialog();
       break;
     case "close-detail":
@@ -829,11 +876,11 @@ function closeGuestMergeDialog() {
 
 async function maybeShowGuestMergePrompt() {
   if (state.temporary || !state.session) return;
-  if (!window.localStorage.getItem(PENDING_GUEST_MERGE_PROMPT_KEY)) return;
+  if (!safeLocalStorageGet(PENDING_GUEST_MERGE_PROMPT_KEY)) return;
 
   const count = await getImportableTemporaryItemCount();
   if (!count) {
-    window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+    safeLocalStorageRemove(PENDING_GUEST_MERGE_PROMPT_KEY);
     return;
   }
 
@@ -853,7 +900,7 @@ async function importTemporaryItemsToAccount(options = {}) {
     const { items: importableItems, images: tempImages } = await getImportableTemporaryData();
 
     if (!importableItems.length) {
-      if (options.clearPrompt) window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+      if (options.clearPrompt) safeLocalStorageRemove(PENDING_GUEST_MERGE_PROMPT_KEY);
       showToast("가져올 게스트 제품이 없습니다.");
       return;
     }
@@ -884,7 +931,7 @@ async function importTemporaryItemsToAccount(options = {}) {
     }
 
     if (!importedIds.length) {
-      if (options.clearPrompt) window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+      if (options.clearPrompt) safeLocalStorageRemove(PENDING_GUEST_MERGE_PROMPT_KEY);
       showToast(skippedCount ? "이미 계정 옷장에 있는 게스트 제품입니다." : "가져올 게스트 제품이 없습니다.");
       return;
     }
@@ -892,7 +939,7 @@ async function importTemporaryItemsToAccount(options = {}) {
     await loadLocalItems();
     queueAutoSyncItems(importedIds);
     await syncQueuedChanges({ silent: true });
-    if (options.clearPrompt) window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+    if (options.clearPrompt) safeLocalStorageRemove(PENDING_GUEST_MERGE_PROMPT_KEY);
     render();
     showToast(skippedCount
       ? `${importedIds.length}개를 가져왔고 ${skippedCount}개는 중복으로 건너뛰었습니다.`
@@ -925,6 +972,7 @@ async function handleCsvFile(event) {
     const items = csvToItems(text, { getTemporaryImageUrl, useTempImages: state.temporary });
     await upsertItems(items);
     await loadLocalItems();
+    if (items.some((item) => !isGuestSampleItem(item))) markStarterStep("itemSaved");
     render();
     queueAutoSyncItems(items.map((item) => item.id));
     showToast(`${items.length}개 제품을 가져왔습니다.`);
@@ -944,6 +992,7 @@ function render() {
   renderDetail();
   updateSyncButton();
   emitFilterChange();
+  emitStarterChange();
 }
 
 function syncFilterControls() {
@@ -1174,6 +1223,7 @@ function getAuthSnapshot() {
   const displayName = cleanText(metadata.full_name || metadata.name || user?.email || "");
   const avatarUrl = cleanText(metadata.avatar_url || metadata.picture || "");
   const status = state.temporary ? "guest" : user ? "signed-in" : "signed-out";
+  const { sampleCount, ownCount } = getStarterItemCounts();
 
   return {
     status,
@@ -1187,7 +1237,9 @@ function getAuthSnapshot() {
     lastSyncedAt: state.lastSyncedAt || "",
     lastSyncError: Boolean(state.lastSyncError),
     lastSyncErrorMessage: cleanText(state.lastSyncError?.message || state.lastSyncError?.details || ""),
-    itemCount: state.items.length
+    itemCount: state.items.length,
+    sampleItemCount: sampleCount,
+    ownItemCount: ownCount
   };
 }
 
@@ -1222,6 +1274,125 @@ function emitFilterChange() {
   const snapshot = getFilterSnapshot();
   window.dispatchEvent(new CustomEvent("closet:filters-change", { detail: snapshot }));
   filterSubscribers.forEach((listener) => listener(snapshot));
+}
+
+function readStarterProgress() {
+  const raw = safeLocalStorageGet(STARTER_PROGRESS_STORAGE_KEY);
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    console.warn("Starter checklist progress could not be read", error);
+    return {};
+  }
+}
+
+function writeStarterProgress(nextProgress) {
+  safeLocalStorageSet(STARTER_PROGRESS_STORAGE_KEY, JSON.stringify(nextProgress));
+}
+
+function updateStarterProgress(patch = {}) {
+  const current = readStarterProgress();
+  const next = {
+    ...current,
+    ...patch,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (JSON.stringify(current) === JSON.stringify(next)) return getStarterSnapshot();
+
+  writeStarterProgress(next);
+  emitStarterChange(true);
+  return getStarterSnapshot();
+}
+
+function markStarterStep(stepKey) {
+  if (!STARTER_STEP_KEYS.has(stepKey)) return getStarterSnapshot();
+  const current = readStarterProgress();
+  if (current[stepKey]) return getStarterSnapshot();
+  return updateStarterProgress({ [stepKey]: true });
+}
+
+function dismissStarterChecklist() {
+  return updateStarterProgress({
+    dismissed: true,
+    dismissedAt: new Date().toISOString()
+  });
+}
+
+function getStarterItemCounts() {
+  return state.items.reduce(
+    (counts, item) => {
+      if (isGuestSampleItem(item)) counts.sampleCount += 1;
+      else counts.ownCount += 1;
+      return counts;
+    },
+    { sampleCount: 0, ownCount: 0 }
+  );
+}
+
+function getStarterSnapshot() {
+  const progress = readStarterProgress();
+  const { sampleCount, ownCount } = getStarterItemCounts();
+  const hasOwnItems = ownCount > 0;
+  const steps = [
+    {
+      key: "sampleOpened",
+      label: "예시 제품 열어보기",
+      description: "샘플 상세에서 기록할 정보를 확인합니다.",
+      done: Boolean(progress.sampleOpened || hasOwnItems)
+    },
+    {
+      key: "itemSaved",
+      label: "내 제품 1개 저장",
+      description: "예시를 복사하거나 새 제품을 저장합니다.",
+      done: Boolean(progress.itemSaved || hasOwnItems)
+    },
+    {
+      key: "analysisViewed",
+      label: "분석 미리보기",
+      description: "색상, 브랜드, 구매 흐름을 확인합니다.",
+      done: Boolean(progress.analysisViewed)
+    },
+    {
+      key: "myViewed",
+      label: "백업/동기화 확인",
+      description: "로컬 저장, ZIP 백업, Google 동기화 차이를 확인합니다.",
+      done: Boolean(progress.myViewed)
+    }
+  ];
+  const completedCount = steps.filter((step) => step.done).length;
+  const completed = completedCount === steps.length;
+
+  return {
+    visible: Boolean(state.temporary && !progress.dismissed && !completed && (sampleCount || !ownCount)),
+    completed,
+    completedCount,
+    totalCount: steps.length,
+    steps,
+    sampleOnly: sampleCount > 0 && ownCount === 0,
+    sampleCount,
+    ownCount
+  };
+}
+
+function subscribeStarter(listener) {
+  if (typeof listener !== "function") return () => {};
+  starterSubscribers.add(listener);
+  listener(getStarterSnapshot());
+  return () => starterSubscribers.delete(listener);
+}
+
+function emitStarterChange(force = false) {
+  const snapshot = getStarterSnapshot();
+  const signature = JSON.stringify(snapshot);
+  if (!force && signature === lastStarterSignature) return;
+
+  lastStarterSignature = signature;
+  window.dispatchEvent(new CustomEvent("closet:starter-change", { detail: snapshot }));
+  starterSubscribers.forEach((listener) => listener(snapshot));
 }
 
 function sameFilterState(a, b) {
@@ -1260,6 +1431,8 @@ function getVisibleItems() {
 function selectItem(id) {
   if (state.draftItem?.id !== id) state.draftItem = null;
   state.selectedId = id;
+  const item = getSelectedItem();
+  if (isGuestSampleItem(item)) markStarterStep("sampleOpened");
   renderItemList();
   renderDetail();
 }
@@ -1307,6 +1480,54 @@ async function createNewItem() {
   state.draftItem = item;
   state.selectedId = item.id;
   render();
+}
+
+function openFirstGuestSample() {
+  const sample = state.items.find((item) => isGuestSampleItem(item));
+  const fallback = state.items[0];
+  const item = sample || fallback;
+  if (!item) {
+    showToast("먼저 예시 제품을 불러온 뒤 다시 시도해 주세요.");
+    return { ok: false };
+  }
+
+  selectItem(item.id);
+  return { ok: true, item: clonePlainItem(item) };
+}
+
+async function convertSelectedSampleToOwnItem() {
+  if (!requireAuthenticatedMutation()) return { ok: false };
+
+  const item = getSelectedItem();
+  if (!item) return { ok: false };
+  if (!isGuestSampleItem(item)) {
+    showToast("이미 내 제품으로 저장된 항목입니다.");
+    return { ok: false };
+  }
+
+  const now = new Date().toISOString();
+  const converted = normalizeItemData({
+    ...buildGuestImportItem(item, { existingItem: true, now }),
+    id: `item-${crypto.randomUUID()}`,
+    name: stripGuestSamplePrefix(item.name) || item.name,
+    externalImageUrl: item.externalImageUrl || "",
+    externalImageEdit: normalizeImageEdit(item.externalImageEdit || defaultImageEdit()),
+    source: "manual",
+    raw: {
+      ...(item.raw || {}),
+      convertedFromGuestSample: item.id
+    },
+    guestSample: false,
+    createdAt: now,
+    updatedAt: now
+  });
+
+  state.draftItem = converted;
+  state.selectedId = converted.id;
+  markStarterStep("sampleOpened");
+  render();
+  showToast("예시를 내 제품 초안으로 복사했습니다. 필요한 항목을 수정하고 저장해 주세요.");
+  return { ok: true, item: clonePlainItem(converted) };
 }
 
 async function duplicateSelectedItem() {
@@ -1389,6 +1610,7 @@ async function saveSelectedItemFromForm(form) {
   await saveItem(updated);
   rememberColorOption(updated.color);
   replaceLocalItem(updated);
+  if (!isGuestSampleItem(updated)) markStarterStep("itemSaved");
   render();
   showToast("저장했습니다.");
   queueAutoSyncItem(updated.id);
@@ -1433,6 +1655,7 @@ async function saveSelectedItemFromData(data, options = {}) {
   await saveItem(updated);
   rememberColorOption(updated.color);
   replaceLocalItem(updated);
+  if (!isGuestSampleItem(updated)) markStarterStep("itemSaved");
   render();
   if (!options.silent) showToast("저장했습니다.");
   queueAutoSyncItem(updated.id);
@@ -2085,8 +2308,8 @@ async function initSupabase() {
       initialAuthSettled = true;
       state.session = session || null;
       updateSyncButton();
-      if (state.session && isLoginPath()) {
-        navigateToAppRoot({ replace: true });
+      if (state.session) {
+        normalizeAuthenticatedSessionRoute({ replace: true });
       }
       settleInitialAuth();
     };
@@ -2104,7 +2327,7 @@ async function initSupabase() {
       if (session) {
         resetSupabaseLookupCaches();
         state.authPrompted = false;
-        navigateToAppRoot({ replace: true });
+        normalizeAuthenticatedSessionRoute({ replace: true });
         if (!sameUser || event === "USER_UPDATED") {
           resumeAuthenticatedSession();
         }
@@ -2226,6 +2449,38 @@ function navigateToAppRoot(options = {}) {
   if (window.location.pathname === "/") return;
   const method = options.replace ? "replaceState" : "pushState";
   window.history[method]({}, "", "/");
+  window.dispatchEvent(new Event("popstate"));
+}
+
+function isAppShellPath(pathname = window.location.pathname) {
+  return APP_SHELL_PATHS.has(pathname);
+}
+
+function normalizeTemporarySessionRoute(options = {}) {
+  if (isPublicInformationPath()) return;
+
+  if (isLoginPath() || !isAppShellPath()) {
+    navigateToAppRoot(options);
+    return;
+  }
+
+  if (!window.location.search) return;
+
+  const method = options.replace ? "replaceState" : "pushState";
+  window.history[method]({}, "", window.location.pathname);
+  window.dispatchEvent(new Event("popstate"));
+}
+
+function normalizeAuthenticatedSessionRoute(options = {}) {
+  if (isLoginPath() || isPublicInformationPath() || !isAppShellPath()) {
+    navigateToAppRoot(options);
+    return;
+  }
+
+  if (!window.location.search) return;
+
+  const method = options.replace ? "replaceState" : "pushState";
+  window.history[method]({}, "", window.location.pathname);
   window.dispatchEvent(new Event("popstate"));
 }
 
@@ -2388,18 +2643,18 @@ async function requestGoogleLogin() {
   if (wasTemporary) {
     const importableCount = await getImportableTemporaryItemCount();
     if (importableCount) {
-      window.localStorage.setItem(PENDING_GUEST_MERGE_PROMPT_KEY, JSON.stringify({
+      safeLocalStorageSet(PENDING_GUEST_MERGE_PROMPT_KEY, JSON.stringify({
         count: importableCount,
         requestedAt: new Date().toISOString()
       }));
     } else {
-      window.localStorage.removeItem(PENDING_GUEST_MERGE_PROMPT_KEY);
+      safeLocalStorageRemove(PENDING_GUEST_MERGE_PROMPT_KEY);
     }
   }
 
   if (wasTemporary) {
     state.temporary = false;
-    window.localStorage.removeItem(GUEST_MODE_STORAGE_KEY);
+    safeLocalStorageRemove(GUEST_MODE_STORAGE_KEY);
     emitAuthChange();
   }
 
@@ -2410,7 +2665,7 @@ async function requestGoogleLogin() {
   if (!state.supabase) {
     if (wasTemporary) {
       state.temporary = true;
-      window.localStorage.setItem(GUEST_MODE_STORAGE_KEY, "1");
+      safeLocalStorageSet(GUEST_MODE_STORAGE_KEY, "1");
       emitAuthChange();
     }
     showToast("Supabase 설정 또는 네트워크 연결을 확인해주세요.");

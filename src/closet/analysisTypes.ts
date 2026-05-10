@@ -25,6 +25,8 @@ export interface ClosetItem {
     url?: string;
   }[];
   externalImageUrl: string;
+  guestSample?: boolean;
+  source?: string;
 }
 
 export interface AnalysisSummary {

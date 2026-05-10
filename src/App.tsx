@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect, type CSSProperties } from "react"
-import { ArrowUp, Grid2X2, Home, List, LogOut, Menu, PieChart, Plus, Search, User, X } from "lucide-react"
+import { ArrowUp, CheckCircle2, ChevronRight, Circle, Grid2X2, Home, List, LogOut, Menu, PieChart, Plus, Search, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -25,6 +25,7 @@ import { FILTER_TABS, SORT_OPTIONS, type FilterKey } from "./closet/filterTypes"
 import { BRAND_CONFIG } from "./brand/brandConfig"
 import { LoginPage } from "./LoginPage"
 import { useAuthSnapshot } from "./closet/authBridge"
+import { getStarterBridge, useStarterSnapshot, type StarterSnapshot, type StarterStepKey } from "./closet/starterBridge"
 import { useLegacyClosetRuntime } from "./closet/useLegacyClosetRuntime"
 import { AppFooter } from "./legal/AppFooter"
 import { ThemeToggle } from "./theme/ThemeToggle"
@@ -88,11 +89,77 @@ function buildDetailContextTitle(item?: DetailTitleItem) {
   return name || detail
 }
 
+function StarterChecklist({
+  snapshot,
+  onNavigate,
+}: {
+  snapshot: StarterSnapshot
+  onNavigate: (page: Extract<AppPage, "analysis" | "my">) => void
+}) {
+  if (!snapshot.visible) return null
+
+  const handleStepAction = (key: StarterStepKey) => {
+    const bridge = getStarterBridge()
+    if (key === "sampleOpened") {
+      bridge?.openFirstGuestSample?.()
+      return
+    }
+    if (key === "itemSaved") {
+      bridge?.createStarterItem?.()
+      return
+    }
+    if (key === "analysisViewed") {
+      bridge?.markStarterStep?.("analysisViewed")
+      onNavigate("analysis")
+      return
+    }
+    if (key === "myViewed") {
+      bridge?.markStarterStep?.("myViewed")
+      onNavigate("my")
+    }
+  }
+
+  return (
+    <section className="starter-checklist" aria-label="처음 시작 체크리스트">
+      <div className="starter-checklist-head">
+        <div>
+          <p className="eyebrow">처음 3분</p>
+          <h2>예시를 내 옷장으로 바꾸는 순서</h2>
+        </div>
+        <div className="starter-progress" aria-label={`${snapshot.completedCount}/${snapshot.totalCount} 완료`}>
+          {snapshot.completedCount}/{snapshot.totalCount}
+        </div>
+      </div>
+      <div className="starter-step-list">
+        {snapshot.steps.map((step) => (
+          <button
+            key={step.key}
+            className={`starter-step ${step.done ? "is-done" : ""}`}
+            type="button"
+            onClick={() => handleStepAction(step.key)}
+          >
+            {step.done ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
+            <span>
+              <strong>{step.label}</strong>
+              <small>{step.description}</small>
+            </span>
+            <ChevronRight className="size-4 starter-step-arrow" />
+          </button>
+        ))}
+      </div>
+      <button className="starter-dismiss" type="button" onClick={() => getStarterBridge()?.dismissStarterChecklist?.()}>
+        지금은 숨기기
+      </button>
+    </section>
+  )
+}
+
 function App() {
   useLegacyClosetRuntime()
 
   const snapshot = useFilterSnapshot()
   const auth = useAuthSnapshot()
+  const starter = useStarterSnapshot()
   const [activePage, setActivePage] = useState<AppPage>(() => getPageFromPath())
   const [categorySheetOpen, setCategorySheetOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
@@ -152,6 +219,29 @@ function App() {
     window.addEventListener("closet:analysis-title-change", handleAnalysisTitleChange)
     return () => window.removeEventListener("closet:analysis-title-change", handleAnalysisTitleChange)
   }, [])
+
+  useEffect(() => {
+    const step = activePage === "analysis" ? "analysisViewed" : activePage === "my" ? "myViewed" : null
+    if (!step) return
+
+    let attempts = 0
+    let timer: number | undefined
+    const markWhenReady = () => {
+      const bridge = getStarterBridge()
+      if (bridge?.markStarterStep) {
+        bridge.markStarterStep(step)
+        return
+      }
+      if (attempts >= 16) return
+      attempts += 1
+      timer = window.setTimeout(markWhenReady, 250)
+    }
+
+    markWhenReady()
+    return () => {
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [activePage])
 
   const navigateTo = (page: AppPage, options: { replace?: boolean; scrollTop?: boolean } = {}) => {
     const nextPath = getPathForPage(page)
@@ -335,7 +425,11 @@ function App() {
           </aside>
 
           <section className={`content ${isLoading ? "is-loading" : ""}`} aria-label="옷장 목록">
-            <div className="content-toolbar">
+	            <StarterChecklist
+	              snapshot={starter}
+	              onNavigate={(page) => navigateTo(page, { scrollTop: true })}
+	            />
+	            <div className="content-toolbar">
               <div className="result-heading">
                 <h2 id="resultTitle">{resultTitle}</h2>
                 <p id="resultCount">{snapshot.visibleCount}개</p>
@@ -373,7 +467,21 @@ function App() {
               <CardContent className="empty-state-content">
                 <h2>표시할 제품이 없습니다</h2>
                 <p>필터를 조정하거나 우측 상단 가져오기 메뉴를 사용하세요.</p>
-              </CardContent>
+	                <div className="empty-state-actions">
+	                  <Button className="button primary" data-action="new-item" type="button">
+	                    <Plus className="size-4" />
+	                    새 제품 추가
+	                  </Button>
+	                  <Button
+	                    className="button secondary"
+	                    type="button"
+	                    variant="outline"
+	                    onClick={() => setBridgeFilters({ query: "", parentCategory: "all", childCategory: "all", brands: [], colors: [], owned: [], priceRanges: [], ratings: [] })}
+	                  >
+	                    필터 초기화
+	                  </Button>
+	                </div>
+	              </CardContent>
             </Card>
           </section>
 
