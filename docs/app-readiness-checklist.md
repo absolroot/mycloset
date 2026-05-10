@@ -13,6 +13,7 @@
 - 계정 삭제 요청 접수: `account_deletion_requests` 테이블과 RLS, 마이페이지 접수 버튼
 - 이미지 저장소 교체 경계: `item_images.storage_provider`, `storage_bucket`, `storage_path` 유지
 - 공개 공유 기능: 앱 MVP 범위에서 제외, `share_snapshots`는 런타임 노출 없이 보류
+- Supabase 공개 RPC 권한 정리: 직접 호출될 필요가 없는 `SECURITY DEFINER` helper 함수 실행 권한 회수
 
 ## 앱 프로젝트 생성 전에 확인
 
@@ -38,6 +39,7 @@
 - 계정 삭제 요청 처리 job은 `account_deletion_requests.status`를 기준으로 별도 구현한다.
 - 이미지 저장소를 R2/S3로 옮길 경우 현재 런타임은 provider locator만 준비되어 있으므로 presign/finalize 서버 함수가 필요하다.
 - Supabase Free Plan은 공개 운영 기준이 아니다. 공개 베타 또는 앱스토어 출시 전에는 Supabase Pro와 백업 정책을 확정한다.
+- Supabase Auth에서 이메일/비밀번호 로그인을 켤 경우 leaked password protection을 대시보드에서 활성화한다.
 
 ## 앱 MVP에서 제외
 
@@ -48,4 +50,3 @@
 - 중고거래 등록
 - 공동 편집
 - 공개 공유 링크 재도입
-
