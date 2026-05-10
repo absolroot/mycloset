@@ -192,6 +192,9 @@ begin
 end;
 $$;
 
+revoke all on function public.touch_parent_item_updated_at() from public;
+revoke execute on function public.touch_parent_item_updated_at() from anon, authenticated;
+
 drop trigger if exists touch_parent_item_from_measurements on public.item_measurements;
 create trigger touch_parent_item_from_measurements
 after insert or update or delete on public.item_measurements
@@ -471,7 +474,15 @@ as $$
 $$;
 
 revoke all on function public.get_share_snapshot(text) from public;
-grant execute on function public.get_share_snapshot(text) to anon, authenticated;
+revoke execute on function public.get_share_snapshot(text) from anon, authenticated;
+
+do $$
+begin
+  if to_regprocedure('public.rls_auto_enable()') is not null then
+    execute 'revoke all on function public.rls_auto_enable() from public';
+    execute 'revoke execute on function public.rls_auto_enable() from anon, authenticated';
+  end if;
+end $$;
 
 do $$
 begin
