@@ -1,5 +1,27 @@
 import { type MouseEvent } from "react"
-import { Archive, CheckCircle2, ChevronRight, Cloud, Database, Download, FileText, Info, LogIn, LogOut, Mail, Settings2, ShieldCheck, Shirt, Upload, User } from "lucide-react"
+import {
+  AlertTriangle,
+  Archive,
+  CheckCircle2,
+  ChevronRight,
+  Cloud,
+  Database,
+  Download,
+  FileText,
+  Info,
+  LogIn,
+  LogOut,
+  Mail,
+  RefreshCw,
+  RotateCcw,
+  Settings2,
+  ShieldCheck,
+  Shirt,
+  Trash2,
+  Upload,
+  User,
+  UserX,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BRAND_CONFIG } from "./brand/brandConfig"
 import { type AppPage } from "./appRoutes"
@@ -55,6 +77,16 @@ function formatSyncState(auth: AuthSnapshot) {
   if (auth.hasPendingSync) return "동기화 대기"
   if (auth.status === "signed-in") return auth.lastSyncedAt ? "동기화됨" : "로그인됨"
   return auth.supabaseReady ? "연결 준비됨" : "로그인 전"
+}
+
+function formatLastSyncedAt(value: string) {
+  if (!value) return "없음"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "확인 필요"
+  return new Intl.DateTimeFormat("ko-KR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date)
 }
 
 export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
@@ -129,10 +161,27 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
               <dd>{formatSyncState(auth)}</dd>
             </div>
             <div>
+              <dt>대기 작업</dt>
+              <dd>{auth.pendingSyncCount.toLocaleString("ko-KR")}개</dd>
+            </div>
+            <div>
+              <dt>최근 동기화</dt>
+              <dd>{formatLastSyncedAt(auth.lastSyncedAt)}</dd>
+            </div>
+            <div>
               <dt>제품 수</dt>
               <dd>{auth.itemCount.toLocaleString("ko-KR")}개</dd>
             </div>
           </dl>
+          {isSignedIn ? (
+            <div className="my-sync-actions">
+              <Button className="button secondary" data-action="sync-now" type="button" variant="outline" disabled={auth.syncing}>
+                <RefreshCw className="size-4" />
+                {auth.lastSyncError || auth.hasPendingSync ? "동기화 재시도" : "지금 동기화"}
+              </Button>
+              {auth.lastSyncError ? <p className="my-inline-warning">{auth.lastSyncErrorMessage || "마지막 동기화가 실패했습니다."}</p> : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="my-section my-theme-section">
@@ -192,6 +241,40 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
           <p>
             게스트 옷장과 로그인 계정 옷장은 분리되어 있습니다. 로그인 후에는 계정 옷장을 먼저 불러오고, 필요할 때 게스트 옷장 가져오기로 직접 추가할 수 있습니다.
           </p>
+        </div>
+
+        <div className="my-section my-danger-section">
+          <div className="my-section-heading">
+            <AlertTriangle className="size-4" />
+            <h3>데이터 관리</h3>
+          </div>
+          <div className="my-menu-list">
+            {isGuest ? (
+              <button className="my-danger-menu-button" data-action="clear-guest-data" type="button">
+                <RotateCcw className="size-4" />
+                게스트 데이터 초기화
+              </button>
+            ) : null}
+            {isSignedIn ? (
+              <>
+                <button className="my-danger-menu-button" data-action="delete-account-wardrobe" type="button" disabled={auth.syncing}>
+                  <Trash2 className="size-4" />
+                  계정 옷장 데이터 삭제
+                </button>
+                <button className="my-danger-menu-button" data-action="request-account-deletion" type="button" disabled={auth.syncing}>
+                  <UserX className="size-4" />
+                  계정 삭제 요청
+                </button>
+              </>
+            ) : null}
+            {!isGuest && !isSignedIn ? (
+              <button type="button" onClick={onGoCloset}>
+                <CheckCircle2 className="size-4" />
+                옷장으로 이동
+              </button>
+            ) : null}
+          </div>
+          <p className="my-danger-note">계정 자체 삭제는 운영자 처리 또는 서버 함수가 필요하므로 요청 접수로 관리합니다. 옷장 데이터 삭제 전에는 JSON 또는 ZIP 백업을 먼저 남기세요.</p>
         </div>
 
         <div className="my-section my-legal-section">

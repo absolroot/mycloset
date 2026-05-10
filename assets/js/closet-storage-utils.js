@@ -58,6 +58,16 @@
     });
   }
 
+  function clear(db, storeNames) {
+    const names = Array.isArray(storeNames) ? storeNames : [storeNames];
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(names, "readwrite");
+      names.forEach((storeName) => tx.objectStore(storeName).clear());
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   async function metaValue(db, key) {
     const record = await get(db, "meta", key);
     return record?.value || "";
@@ -69,6 +79,7 @@
 
   window.closetStorageUtils = {
     all,
+    clear,
     get,
     metaValue,
     openDatabase,

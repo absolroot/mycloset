@@ -48,6 +48,7 @@ const {
 } = window.closetBackupUtils;
 const {
   all: storageAll,
+  clear: storageClear,
   get: storageGet,
   metaValue: storageMetaValue,
   openDatabase: storageOpenDatabase,
@@ -107,6 +108,7 @@ const {
 const {
   createClient: createSupabaseClient,
   createSignedImageUrlMap,
+  deleteAllWardrobeData: deleteSupabaseWardrobeData,
   deleteImage: deleteSupabaseImage,
   deleteItem: deleteSupabaseItem,
   ensureCategoryRowsForItem: ensureSupabaseCategoryRowsForItem,
@@ -118,6 +120,7 @@ const {
   itemToRow: supabaseItemToRow,
   remoteImageFromRow,
   replaceMeasurements: replaceSupabaseMeasurements,
+  requestAccountDeletion: requestSupabaseAccountDeletion,
   signInWithGoogle,
   signOut: signOutOfSupabase,
   uploadItemImages,
@@ -527,6 +530,18 @@ function handleDocumentClick(event) {
     case "merge-temporary":
       importTemporaryItemsToAccount();
       break;
+    case "sync-now":
+      handleSyncButton();
+      break;
+    case "clear-guest-data":
+      clearGuestWardrobeData();
+      break;
+    case "delete-account-wardrobe":
+      deleteSignedInWardrobeData();
+      break;
+    case "request-account-deletion":
+      requestAccountDeletion();
+      break;
     case "confirm-merge-temporary":
       importTemporaryItemsToAccount({ clearPrompt: true });
       closeGuestMergeDialog();
@@ -633,6 +648,10 @@ function dbPut(storeName, value) {
 
 function dbDelete(storeName, key) {
   return storageRemove(state.db, storeName, key);
+}
+
+function dbClear(storeNames) {
+  return storageClear(state.db, storeNames);
 }
 
 async function dbMetaValue(key) {
@@ -1164,8 +1183,10 @@ function getAuthSnapshot() {
     syncing: state.syncing,
     supabaseReady: state.supabaseReady,
     hasPendingSync: hasPendingSync(),
+    pendingSyncCount: pendingSyncCount(),
     lastSyncedAt: state.lastSyncedAt || "",
     lastSyncError: Boolean(state.lastSyncError),
+    lastSyncErrorMessage: cleanText(state.lastSyncError?.message || state.lastSyncError?.details || ""),
     itemCount: state.items.length
   };
 }
@@ -2358,6 +2379,10 @@ function hasPendingSync() {
   return Boolean(state.pendingItemIds.size || state.pendingDeleteIds.size || state.pendingImageDeletes.size);
 }
 
+function pendingSyncCount() {
+  return state.pendingItemIds.size + state.pendingDeleteIds.size + state.pendingImageDeletes.size;
+}
+
 async function requestGoogleLogin() {
   const wasTemporary = state.temporary;
   if (wasTemporary) {
@@ -2416,6 +2441,98 @@ async function requestLogout() {
 
     showToast("로그아웃했습니다.");
   } finally {
+    updateSyncButton();
+  }
+}
+
+async function clearLocalWardrobeState() {
+  for (const imageId of [...state.imageUrls.keys()]) {
+    revokeImageUrl(imageId);
+  }
+
+  await dbClear(["items", "images", "meta"]);
+  state.items = [];
+  state.selectedId = null;
+  state.draftItem = null;
+  state.remoteImageCachePromises.clear();
+  state.pendingItemIds.clear();
+  state.pendingDeleteIds.clear();
+  state.pendingImageDeletes.clear();
+  state.lastSyncError = null;
+  state.lastSyncedAt = "";
+  clearTimeout(state.syncTimer);
+}
+
+async function clearGuestWardrobeData() {
+  if (!state.temporary) return;
+
+  const confirmed = window.confirm("현재 브라우저에 저장된 게스트 옷장 데이터를 모두 삭제합니다. 계속할까요?");
+  if (!confirmed) return;
+
+  try {
+    await clearLocalWardrobeState();
+    render();
+    emitAuthChange();
+    showToast("게스트 옷장 데이터를 삭제했습니다.");
+  } catch (error) {
+    console.error(error);
+    showToast("게스트 데이터를 삭제하지 못했습니다.");
+  }
+}
+
+async function deleteSignedInWardrobeData() {
+  if (!state.supabase || !state.session) {
+    showAuthDialog();
+    return;
+  }
+
+  const confirmed = window.confirm("로그인 계정의 옷장 데이터와 원격 이미지를 모두 삭제합니다. 계정 자체는 유지됩니다. 먼저 백업했는지 확인해주세요. 계속할까요?");
+  if (!confirmed) return;
+
+  try {
+    state.syncing = true;
+    updateSyncButton();
+    await deleteSupabaseWardrobeData(state.supabase, state.session.user.id);
+    await clearLocalWardrobeState();
+    showToast("계정 옷장 데이터를 삭제했습니다.");
+  } catch (error) {
+    console.error(error);
+    state.lastSyncError = error;
+    showToast("계정 옷장 데이터를 삭제하지 못했습니다.");
+  } finally {
+    state.syncing = false;
+    updateSyncButton();
+    render();
+  }
+}
+
+async function requestAccountDeletion() {
+  if (!state.supabase || !state.session) {
+    showAuthDialog();
+    return;
+  }
+
+  const confirmed = window.confirm("계정 삭제 요청을 접수합니다. 옷장 데이터는 먼저 내보내기를 권장합니다. 계속할까요?");
+  if (!confirmed) return;
+
+  try {
+    state.syncing = true;
+    updateSyncButton();
+    const result = await requestSupabaseAccountDeletion(state.supabase, {
+      userId: state.session.user.id,
+      email: state.session.user.email,
+      note: "Requested from My Page"
+    });
+    showToast(result.alreadyRequested ? "이미 계정 삭제 요청이 접수되어 있습니다." : "계정 삭제 요청을 접수했습니다.");
+  } catch (error) {
+    console.error(error);
+    if (isMissingRelationError(error)) {
+      showToast("계정 삭제 요청 테이블이 없습니다. 최신 schema.sql을 적용해주세요.");
+    } else {
+      showToast("계정 삭제 요청을 접수하지 못했습니다.");
+    }
+  } finally {
+    state.syncing = false;
     updateSyncButton();
   }
 }

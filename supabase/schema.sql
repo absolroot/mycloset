@@ -141,6 +141,16 @@ create table if not exists public.share_snapshots (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.account_deletion_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  requester_email text,
+  status text not null default 'requested' check (status in ('requested', 'processing', 'completed', 'rejected', 'cancelled')),
+  note text,
+  requested_at timestamptz not null default now(),
+  processed_at timestamptz
+);
+
 create index if not exists items_user_updated_idx on public.items (user_id, updated_at desc);
 create index if not exists items_user_category_idx on public.items (user_id, parent_category, category);
 create index if not exists items_user_rating_idx on public.items (user_id, rating) where rating is not null;
@@ -156,6 +166,10 @@ create index if not exists item_measurements_definition_idx on public.item_measu
 create index if not exists item_images_item_idx on public.item_images (item_id);
 create index if not exists item_images_storage_locator_idx on public.item_images (storage_provider, storage_bucket, storage_path);
 create index if not exists share_snapshots_token_idx on public.share_snapshots (token) where is_active = true;
+create index if not exists account_deletion_requests_user_idx on public.account_deletion_requests (user_id, requested_at desc);
+create unique index if not exists account_deletion_requests_open_user_idx
+  on public.account_deletion_requests (user_id)
+  where status in ('requested', 'processing');
 
 create or replace function public.touch_parent_item_updated_at()
 returns trigger
@@ -196,6 +210,7 @@ alter table public.category_measurement_templates enable row level security;
 alter table public.item_measurements enable row level security;
 alter table public.item_images enable row level security;
 alter table public.share_snapshots enable row level security;
+alter table public.account_deletion_requests enable row level security;
 
 drop policy if exists "items are owned by the current user" on public.items;
 create policy "items are owned by the current user"
@@ -425,6 +440,20 @@ using (auth.uid() = owner_id)
 with check (auth.uid() = owner_id);
 
 drop policy if exists "active share snapshots are readable" on public.share_snapshots;
+
+drop policy if exists "users can read their account deletion requests" on public.account_deletion_requests;
+create policy "users can read their account deletion requests"
+on public.account_deletion_requests
+for select
+to authenticated
+using ((select auth.uid()) = user_id);
+
+drop policy if exists "users can create account deletion requests" on public.account_deletion_requests;
+create policy "users can create account deletion requests"
+on public.account_deletion_requests
+for insert
+to authenticated
+with check ((select auth.uid()) = user_id and status = 'requested');
 
 create or replace function public.get_share_snapshot(share_token text)
 returns jsonb

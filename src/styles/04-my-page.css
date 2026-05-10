@@ -119,6 +119,11 @@
   grid-column: 1 / -1;
 }
 
+.my-danger-section {
+  grid-column: 1 / -1;
+  border-color: color-mix(in oklch, var(--destructive) 34%, var(--border));
+}
+
 .my-legal-section {
   grid-column: 1 / -1;
 }
@@ -243,9 +248,48 @@
   flex: 0 0 auto;
 }
 
+.my-sync-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.my-sync-actions .button {
+  width: fit-content;
+  min-height: 38px;
+  gap: 8px;
+}
+
+.my-inline-warning {
+  margin: 0;
+  color: var(--destructive);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
 .my-note-section p {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 14px;
+  line-height: 1.6;
+}
+
+.my-danger-menu-button {
+  color: var(--destructive) !important;
+}
+
+.my-danger-menu-button:hover {
+  background: color-mix(in oklch, var(--destructive) 10%, transparent) !important;
+}
+
+.my-menu-list button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.my-danger-note {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
   line-height: 1.6;
 }

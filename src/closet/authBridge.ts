@@ -10,8 +10,10 @@ export type AuthSnapshot = {
   syncing: boolean
   supabaseReady: boolean
   hasPendingSync: boolean
+  pendingSyncCount: number
   lastSyncedAt: string
   lastSyncError: boolean
+  lastSyncErrorMessage: string
   itemCount: number
 }
 
@@ -25,8 +27,10 @@ const EMPTY_AUTH_SNAPSHOT: AuthSnapshot = {
   syncing: false,
   supabaseReady: false,
   hasPendingSync: false,
+  pendingSyncCount: 0,
   lastSyncedAt: "",
   lastSyncError: false,
+  lastSyncErrorMessage: "",
   itemCount: 0,
 }
 

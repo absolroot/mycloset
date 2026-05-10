@@ -7,6 +7,7 @@
 이 저장소를 가져가서 쓰는 사람은 개인 옷장 앱의 기본 골격으로 사용할 수 있습니다. CSV로 기존 데이터를 가져오고, Supabase 프로젝트만 바꿔 연결하면 본인 데이터로 운영할 수 있게 구성되어 있습니다.
 
 - 서비스 설계 PRD: [docs/service-design.md](docs/service-design.md)
+- 앱화 전 체크리스트: [docs/app-readiness-checklist.md](docs/app-readiness-checklist.md)
 
 ## 주요 기능
 
