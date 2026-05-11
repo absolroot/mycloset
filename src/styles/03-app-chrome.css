@@ -54,7 +54,7 @@
   color: var(--muted-foreground);
   padding: 0 13px;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 400;
   white-space: nowrap;
 }
 
@@ -65,7 +65,7 @@
 .desktop-parent-category-nav button.active {
   background: transparent;
   color: var(--foreground);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .topbar h1 {
