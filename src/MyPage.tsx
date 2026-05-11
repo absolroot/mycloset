@@ -23,6 +23,8 @@ import {
   UserX,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BRAND_CONFIG } from "./brand/brandConfig"
 import { type AppPage } from "./appRoutes"
 import { useAuthSnapshot, type AuthSnapshot } from "./closet/authBridge"
@@ -90,6 +92,10 @@ function formatLastSyncedAt(value: string) {
   }).format(date)
 }
 
+function getCategoryControlId(...parts: string[]) {
+  return `category-setting-${parts.map((part) => encodeURIComponent(part)).join("__")}`
+}
+
 function CategoryDisplaySettings() {
   const snapshot = useCategorySettingsSnapshot()
   const visibleParentCount = snapshot.visibleParents.length
@@ -102,9 +108,9 @@ function CategoryDisplaySettings() {
           <Settings2 className="size-4" />
           <h3>카테고리 표시</h3>
         </div>
-        <button className="my-category-reset-button" type="button" onClick={resetCategoryVisibility}>
+        <Button className="my-category-reset-button" type="button" variant="outline" size="sm" onClick={resetCategoryVisibility}>
           모두 표시
-        </button>
+        </Button>
       </div>
       <div className="my-category-summary">
         <span>{totalParentCount ? `상위 ${visibleParentCount}/${totalParentCount}개 · 하위 ${snapshot.visibleChildCount}/${snapshot.totalChildCount}개 표시` : "카테고리 불러오는 중"}</span>
@@ -112,30 +118,43 @@ function CategoryDisplaySettings() {
       </div>
       <div className="my-category-tree">
         {snapshot.tree.map((parent) => {
+          const parentControlId = getCategoryControlId(parent.name)
+
           return (
             <div key={parent.name} className={parent.visible ? "my-category-tree-group active" : "my-category-tree-group"}>
-              <label className="my-category-parent-toggle">
-                <input
-                  type="checkbox"
+              <div className="my-category-parent-toggle">
+                <Checkbox
+                  id={parentControlId}
+                  className="my-category-checkbox"
                   checked={parent.visible}
-                  onChange={(event) => setCategoryParentVisible(parent.name, event.target.checked)}
+                  onCheckedChange={(checked) => setCategoryParentVisible(parent.name, checked === true)}
                 />
-                <span>{parent.name}</span>
-                <small>{parent.count ? `${parent.count.toLocaleString("ko-KR")}개` : "추가 가능"}</small>
-              </label>
+                <label htmlFor={parentControlId}>{parent.name}</label>
+                <small>{parent.count ? `${parent.count.toLocaleString("ko-KR")}개` : "0개"}</small>
+              </div>
               <div className="my-category-child-list">
-                {parent.children.map((child) => (
-                  <label key={child.name} className={child.visible && parent.visible ? "my-category-child-toggle active" : "my-category-child-toggle"}>
-                    <input
-                      type="checkbox"
-                      checked={child.visible && parent.visible}
-                      disabled={!parent.visible}
-                      onChange={(event) => setCategoryChildVisible(parent.name, child.name, event.target.checked)}
-                    />
-                    <span>{child.name}</span>
-                    <small>{child.count ? `${child.count.toLocaleString("ko-KR")}개` : "추가 가능"}</small>
-                  </label>
-                ))}
+                {parent.children.map((child) => {
+                  const childControlId = getCategoryControlId(parent.name, child.name)
+                  const childActive = child.visible && parent.visible
+
+                  return (
+                    <div
+                      key={child.name}
+                      className={childActive ? "my-category-child-toggle active" : "my-category-child-toggle"}
+                      data-disabled={!parent.visible || undefined}
+                    >
+                      <Checkbox
+                        id={childControlId}
+                        className="my-category-checkbox"
+                        checked={childActive}
+                        disabled={!parent.visible}
+                        onCheckedChange={(checked) => setCategoryChildVisible(parent.name, child.name, checked === true)}
+                      />
+                      <label htmlFor={childControlId}>{child.name}</label>
+                      <small>{child.count ? `${child.count.toLocaleString("ko-KR")}개` : "0개"}</small>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )
@@ -251,9 +270,14 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
         </div>
       </section>
 
-      <CategoryDisplaySettings />
+      <Tabs defaultValue="overview" className="my-tabs">
+        <TabsList className="my-tabs-list" aria-label="마이페이지 탭">
+          <TabsTrigger value="overview">내 정보</TabsTrigger>
+          <TabsTrigger value="settings">설정</TabsTrigger>
+        </TabsList>
 
-      <section className="my-grid" aria-label="마이페이지 정보">
+        <TabsContent value="overview" className="my-tab-content">
+          <section className="my-grid" aria-label="마이페이지 정보">
         <div className="my-section">
           <div className="my-section-heading">
             <Cloud className="size-4" />
@@ -290,17 +314,6 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
               {auth.lastSyncError ? <p className="my-inline-warning">{auth.lastSyncErrorMessage || "마지막 동기화가 실패했습니다."}</p> : null}
             </div>
           ) : null}
-        </div>
-
-        <div className="my-section my-theme-section">
-          <div className="my-section-heading">
-            <Settings2 className="size-4" />
-            <h3>설정</h3>
-          </div>
-          <div className="my-setting-row">
-            <span>화면 모드</span>
-            <ThemeToggle className="my-theme-toggle" />
-          </div>
         </div>
 
         <div className="my-section">
@@ -408,7 +421,25 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
             </a>
           </div>
         </div>
-      </section>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="settings" className="my-tab-content">
+          <div className="my-settings-stack">
+            <section className="my-section my-settings-theme-section" aria-label="화면 설정">
+              <div className="my-section-heading">
+                <Settings2 className="size-4" />
+                <h3>설정</h3>
+              </div>
+              <div className="my-setting-row">
+                <span>화면 모드</span>
+                <ThemeToggle className="my-theme-toggle" />
+              </div>
+            </section>
+            <CategoryDisplaySettings />
+          </div>
+        </TabsContent>
+      </Tabs>
     </main>
   )
 }
