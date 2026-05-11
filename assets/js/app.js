@@ -1171,6 +1171,24 @@ function getChildCategoryOptions(parentCategory) {
   return sortChildCategoryOptions(parent, uniqueValues([...defaults, ...fromItems]));
 }
 
+function getAllChildCategoryOptions() {
+  const fromItems = uniqueValues(state.items.map((item) => item.category));
+  const defaults = Object.values(DEFAULT_CATEGORY_TREE).flat();
+  return orderedUniqueCategories([fromItems, defaults]);
+}
+
+function orderedUniqueCategories(groups) {
+  const seen = new Set();
+  const result = [];
+  groups.flat().forEach((category) => {
+    const value = cleanText(category);
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    result.push(value);
+  });
+  return result;
+}
+
 function sortChildCategoryOptions(parentCategory, values) {
   const order = CHILD_CATEGORY_ORDER[parentCategory];
   if (!order) return values;
@@ -1210,7 +1228,7 @@ function getFilterSnapshot() {
   const visibleItems = getVisibleItems();
   const parentCategories = getParentCategoryOptions();
   const childCategories = state.filters.parentCategory === "all"
-    ? uniqueValues(state.items.map((item) => item.category))
+    ? getAllChildCategoryOptions()
     : getChildCategoryOptions(state.filters.parentCategory);
 
   return window.closetFilterUtils.getFilterSnapshot({
