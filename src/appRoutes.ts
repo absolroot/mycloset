@@ -1,10 +1,11 @@
-export type AppPage = "closet" | "analysis" | "login" | "my" | "about" | "terms" | "privacy"
+export type AppPage = "closet" | "analysis" | "login" | "my" | "accountDeletion" | "about" | "terms" | "privacy"
 
 export const APP_PAGE_PATHS: Record<AppPage, string> = {
   closet: "/",
   analysis: "/analysis",
   login: "/login",
   my: "/my",
+  accountDeletion: "/account-deletion",
   about: "/about",
   terms: "/terms",
   privacy: "/privacy",

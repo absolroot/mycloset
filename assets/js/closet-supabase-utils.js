@@ -184,13 +184,6 @@
     return chunks;
   }
 
-  async function deleteQuery(query, options = {}) {
-    const { error } = await query;
-    if (!error) return;
-    if (options.ignoreMissingRelation && isMissingRelationError(error)) return;
-    throw error;
-  }
-
   async function upsertItem(supabase, row) {
     const { error } = await supabase.from("items").upsert(row);
     if (!error) return { ratingColumnAvailable: true };
@@ -484,62 +477,6 @@
     if (error) throw error;
   }
 
-  async function fetchOwnedImageLocators(supabase, userId) {
-    const { data, error } = await supabase
-      .from("item_images")
-      .select("id, storage_provider, storage_bucket, storage_path")
-      .eq("owner_id", userId);
-
-    if (!error) return data || [];
-
-    if (isMissingImageProviderColumnError(error)) {
-      const { data: legacyData, error: legacyError } = await supabase
-        .from("item_images")
-        .select("id, storage_path")
-        .eq("owner_id", userId);
-      if (legacyError) throw legacyError;
-      return legacyData || [];
-    }
-
-    throw error;
-  }
-
-  async function removeStorageObjects(supabase, imageRows) {
-    const storageConfig = imageStorageConfig();
-    const pathsByBucket = new Map();
-
-    for (const row of imageRows || []) {
-      const locator = normalizeImageLocator({
-        storagePath: row.storage_path,
-        storageProvider: row.storage_provider,
-        storageBucket: row.storage_bucket
-      }, storageConfig);
-      if (!locator.storagePath || !isSupabaseStorage(locator)) continue;
-      if (!pathsByBucket.has(locator.storageBucket)) pathsByBucket.set(locator.storageBucket, []);
-      pathsByBucket.get(locator.storageBucket).push(locator.storagePath);
-    }
-
-    for (const [bucket, paths] of pathsByBucket.entries()) {
-      const uniquePaths = window.closetFormatUtils.uniqueValues(paths);
-      for (const pathChunk of chunk(uniquePaths, 100)) {
-        const { error } = await supabase.storage.from(bucket).remove(pathChunk);
-        if (error) throw error;
-      }
-    }
-  }
-
-  async function deleteAllWardrobeData(supabase, userId) {
-    const imageRows = await fetchOwnedImageLocators(supabase, userId);
-    await removeStorageObjects(supabase, imageRows);
-
-    await deleteQuery(supabase.from("share_snapshots").delete().eq("owner_id", userId), { ignoreMissingRelation: true });
-    await deleteQuery(supabase.from("item_images").delete().eq("owner_id", userId), { ignoreMissingRelation: true });
-    await deleteQuery(supabase.from("items").delete().eq("user_id", userId), { ignoreMissingRelation: true });
-    await deleteQuery(supabase.from("categories").delete().eq("owner_id", userId).eq("is_system", false), { ignoreMissingRelation: true });
-    await deleteQuery(supabase.from("colors").delete().eq("owner_id", userId).eq("is_system", false), { ignoreMissingRelation: true });
-    await deleteQuery(supabase.from("measurement_definitions").delete().eq("owner_id", userId).eq("is_system", false), { ignoreMissingRelation: true });
-  }
-
   async function requestAccountDeletion(supabase, { userId, email, note } = {}) {
     const { data: existing, error: existingError } = await supabase
       .from("account_deletion_requests")
@@ -569,7 +506,6 @@
   window.closetSupabaseUtils = {
     createClient,
     createSignedImageUrlMap,
-    deleteAllWardrobeData,
     deleteImage,
     deleteItem,
     ensureCategoryRowsForItem,

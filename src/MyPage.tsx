@@ -1,8 +1,6 @@
 import { type MouseEvent } from "react"
 import {
-  AlertTriangle,
   Archive,
-  CheckCircle2,
   ChevronRight,
   Cloud,
   Database,
@@ -13,14 +11,10 @@ import {
   LogOut,
   Mail,
   RefreshCw,
-  RotateCcw,
   Settings2,
   ShieldCheck,
-  Shirt,
-  Trash2,
   Upload,
   User,
-  UserX,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -31,10 +25,9 @@ import { useAuthSnapshot, type AuthSnapshot } from "./closet/authBridge"
 import { resetCategoryVisibility, setCategoryChildVisible, setCategoryParentVisible, useCategorySettingsSnapshot } from "./closet/categorySettingsBridge"
 import { ThemeToggle } from "./theme/ThemeToggle"
 
-type MyPageNavigationTarget = Extract<AppPage, "closet" | "about" | "terms" | "privacy">
+type MyPageNavigationTarget = Extract<AppPage, "closet" | "about" | "terms" | "privacy" | "accountDeletion">
 
 type MyPageProps = {
-  onGoCloset: () => void
   onNavigate: (page: MyPageNavigationTarget) => void
 }
 
@@ -164,7 +157,36 @@ function CategoryDisplaySettings() {
   )
 }
 
-export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
+function DataPortabilitySettings() {
+  return (
+    <section className="my-section my-data-portability-section" aria-label="데이터 가져오기와 내보내기">
+      <div className="my-section-heading">
+        <Database className="size-4" />
+        <h3>데이터 가져오기/내보내기</h3>
+      </div>
+      <div className="my-menu-list my-data-portability-list">
+        <button data-action="import-csv" type="button">
+          <Upload className="size-4" />
+          CSV 가져오기
+        </button>
+        <button data-action="export-csv" type="button">
+          <Download className="size-4" />
+          CSV 내보내기
+        </button>
+        <button data-action="export-json" type="button">
+          <Database className="size-4" />
+          JSON 백업
+        </button>
+        <button data-action="export-zip" type="button">
+          <Archive className="size-4" />
+          이미지 포함 ZIP 백업
+        </button>
+      </div>
+    </section>
+  )
+}
+
+export function MyPage({ onNavigate }: MyPageProps) {
   const auth = useAuthSnapshot()
   const copy = getStatusCopy(auth)
   const isSignedIn = auth.status === "signed-in"
@@ -316,44 +338,6 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
           ) : null}
         </div>
 
-        <div className="my-section">
-          <div className="my-section-heading">
-            <Shirt className="size-4" />
-            <h3>옷장 작업</h3>
-          </div>
-          <div className="my-menu-list">
-            <button type="button" onClick={onGoCloset}>
-              <CheckCircle2 className="size-4" />
-              옷장으로 이동
-            </button>
-            <button data-action="import-csv" type="button">
-              <Upload className="size-4" />
-              CSV 가져오기
-            </button>
-            <button data-action="export-csv" type="button">
-              <Download className="size-4" />
-              CSV 내보내기
-            </button>
-          </div>
-        </div>
-
-        <div className="my-section">
-          <div className="my-section-heading">
-            <Database className="size-4" />
-            <h3>백업</h3>
-          </div>
-          <div className="my-menu-list">
-            <button data-action="export-json" type="button">
-              <Database className="size-4" />
-              JSON 백업
-            </button>
-            <button data-action="export-zip" type="button">
-              <Archive className="size-4" />
-              이미지 포함 ZIP 백업
-            </button>
-          </div>
-        </div>
-
         <div className="my-section my-note-section">
           <div className="my-section-heading">
             <ShieldCheck className="size-4" />
@@ -362,40 +346,6 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
           <p>
             게스트 옷장과 로그인 계정 옷장은 분리되어 있습니다. 로그인 후에는 계정 옷장을 먼저 불러오고, 필요할 때 게스트 옷장 가져오기로 직접 추가할 수 있습니다.
           </p>
-        </div>
-
-        <div className="my-section my-danger-section">
-          <div className="my-section-heading">
-            <AlertTriangle className="size-4" />
-            <h3>데이터 관리</h3>
-          </div>
-          <div className="my-menu-list">
-            {isGuest ? (
-              <button className="my-danger-menu-button" data-action="clear-guest-data" type="button">
-                <RotateCcw className="size-4" />
-                게스트 데이터 초기화
-              </button>
-            ) : null}
-            {isSignedIn ? (
-              <>
-                <button className="my-danger-menu-button" data-action="delete-account-wardrobe" type="button" disabled={auth.syncing}>
-                  <Trash2 className="size-4" />
-                  계정 옷장 데이터 삭제
-                </button>
-                <button className="my-danger-menu-button" data-action="request-account-deletion" type="button" disabled={auth.syncing}>
-                  <UserX className="size-4" />
-                  계정 삭제 요청
-                </button>
-              </>
-            ) : null}
-            {!isGuest && !isSignedIn ? (
-              <button type="button" onClick={onGoCloset}>
-                <CheckCircle2 className="size-4" />
-                옷장으로 이동
-              </button>
-            ) : null}
-          </div>
-          <p className="my-danger-note">계정 자체 삭제는 운영자 처리 또는 서버 함수가 필요하므로 요청 접수로 관리합니다. 옷장 데이터 삭제 전에는 JSON 또는 ZIP 백업을 먼저 남기세요.</p>
         </div>
 
         <div className="my-section my-legal-section">
@@ -437,9 +387,17 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
               </div>
             </section>
             <CategoryDisplaySettings />
+            <DataPortabilitySettings />
           </div>
         </TabsContent>
       </Tabs>
+      {isSignedIn ? (
+        <p className="my-account-exit-link">
+          <a href="/account-deletion" onClick={(event) => navigateInApp(event, "accountDeletion")}>
+            회원 탈퇴
+          </a>
+        </p>
+      ) : null}
     </main>
   )
 }

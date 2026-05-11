@@ -15,7 +15,7 @@ const SYNC_CATEGORY_ROWS = false;
 const HIDDEN_FILTER_COLOR_OPTIONS = new Set(["블루", "네이비", "카키", "와인"]);
 const DEFAULT_COLOR_OPTIONS = window.closetFormatUtils.DEFAULT_COLOR_OPTIONS;
 const PUBLIC_INFORMATION_PATHS = new Set(["/about", "/terms", "/privacy"]);
-const APP_SHELL_PATHS = new Set(["/", "/analysis", "/my"]);
+const APP_SHELL_PATHS = new Set(["/", "/analysis", "/my", "/account-deletion"]);
 const {
   MEASURE_FIELDS,
   MEASUREMENT_BY_LABEL,
@@ -114,7 +114,6 @@ const {
 const {
   createClient: createSupabaseClient,
   createSignedImageUrlMap,
-  deleteAllWardrobeData: deleteSupabaseWardrobeData,
   deleteImage: deleteSupabaseImage,
   deleteItem: deleteSupabaseItem,
   ensureCategoryRowsForItem: ensureSupabaseCategoryRowsForItem,
@@ -610,9 +609,6 @@ function handleDocumentClick(event) {
       break;
     case "clear-guest-data":
       clearGuestWardrobeData();
-      break;
-    case "delete-account-wardrobe":
-      deleteSignedInWardrobeData();
       break;
     case "request-account-deletion":
       requestAccountDeletion();
@@ -3034,40 +3030,24 @@ async function clearGuestWardrobeData() {
   }
 }
 
-async function deleteSignedInWardrobeData() {
-  if (!state.supabase || !state.session) {
-    showAuthDialog();
-    return;
-  }
-
-  const confirmed = window.confirm("로그인 계정의 옷장 데이터와 원격 이미지를 모두 삭제합니다. 계정 자체는 유지됩니다. 먼저 백업했는지 확인해주세요. 계속할까요?");
-  if (!confirmed) return;
-
-  try {
-    state.syncing = true;
-    updateSyncButton();
-    await deleteSupabaseWardrobeData(state.supabase, state.session.user.id);
-    await clearLocalWardrobeState();
-    showToast("계정 옷장 데이터를 삭제했습니다.");
-  } catch (error) {
-    console.error(error);
-    state.lastSyncError = error;
-    showToast("계정 옷장 데이터를 삭제하지 못했습니다.");
-  } finally {
-    state.syncing = false;
-    updateSyncButton();
-    render();
-  }
-}
-
 async function requestAccountDeletion() {
   if (!state.supabase || !state.session) {
     showAuthDialog();
     return;
   }
 
-  const confirmed = window.confirm("계정 삭제 요청을 접수합니다. 옷장 데이터는 먼저 내보내기를 권장합니다. 계속할까요?");
+  const isWithdrawalPage = window.location.pathname === "/account-deletion";
+  const confirmed = window.confirm(
+    isWithdrawalPage
+      ? "회원 탈퇴 요청을 접수합니다. 계정과 연결된 옷장 데이터 삭제도 함께 요청됩니다. 먼저 백업했는지 확인해주세요. 계속할까요?"
+      : "회원 탈퇴 페이지로 이동해 요청해주세요."
+  );
   if (!confirmed) return;
+  if (!isWithdrawalPage) {
+    window.history.pushState({}, "", "/account-deletion");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    return;
+  }
 
   try {
     state.syncing = true;
@@ -3075,15 +3055,15 @@ async function requestAccountDeletion() {
     const result = await requestSupabaseAccountDeletion(state.supabase, {
       userId: state.session.user.id,
       email: state.session.user.email,
-      note: "Requested from My Page"
+      note: "Requested from account deletion page; include wardrobe data deletion."
     });
-    showToast(result.alreadyRequested ? "이미 계정 삭제 요청이 접수되어 있습니다." : "계정 삭제 요청을 접수했습니다.");
+    showToast(result.alreadyRequested ? "이미 회원 탈퇴 요청이 접수되어 있습니다." : "회원 탈퇴 요청을 접수했습니다.");
   } catch (error) {
     console.error(error);
     if (isMissingRelationError(error)) {
-      showToast("계정 삭제 요청 테이블이 없습니다. 최신 schema.sql을 적용해주세요.");
+      showToast("회원 탈퇴 요청 테이블이 없습니다. 최신 schema.sql을 적용해주세요.");
     } else {
-      showToast("계정 삭제 요청을 접수하지 못했습니다.");
+      showToast("회원 탈퇴 요청을 접수하지 못했습니다.");
     }
   } finally {
     state.syncing = false;

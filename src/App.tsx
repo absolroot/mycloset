@@ -36,6 +36,7 @@ const ClosetDetailDialog = lazy(() =>
 )
 
 const AnalysisPage = lazy(() => import("./AnalysisPage"))
+const AccountDeletionPage = lazy(() => import("./AccountDeletionPage").then((module) => ({ default: module.AccountDeletionPage })))
 const MyPage = lazy(() => import("./MyPage").then((module) => ({ default: module.MyPage })))
 const LegalPage = lazy(() => import("./legal/LegalPage").then((module) => ({ default: module.LegalPage })))
 
@@ -270,13 +271,15 @@ function App() {
       ? analysisTitle
       : activePage === "my"
         ? "마이"
-        : activePage === "about"
-          ? "서비스 소개"
-          : activePage === "terms"
-            ? "이용약관"
-            : activePage === "privacy"
-              ? "개인정보처리방침"
-              : closetContext
+        : activePage === "accountDeletion"
+          ? "회원 탈퇴"
+          : activePage === "about"
+            ? "서비스 소개"
+            : activePage === "terms"
+              ? "이용약관"
+              : activePage === "privacy"
+                ? "개인정보처리방침"
+                : closetContext
   useEffect(() => {
     document.title = `${topbarContext} · ${BRAND_CONFIG.serviceName}`
   }, [topbarContext])
@@ -497,9 +500,13 @@ function App() {
         {activePage === "my" && (
           <Suspense fallback={<PageLoading />}>
             <MyPage
-              onGoCloset={() => navigateTo("closet", { scrollTop: true })}
               onNavigate={(page) => navigateTo(page, { scrollTop: true })}
             />
+          </Suspense>
+        )}
+        {activePage === "accountDeletion" && (
+          <Suspense fallback={<PageLoading />}>
+            <AccountDeletionPage onNavigate={(page) => navigateTo(page, { scrollTop: true })} />
           </Suspense>
         )}
         {activePage === "about" && (

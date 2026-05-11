@@ -172,6 +172,28 @@
   gap: 12px;
 }
 
+.my-data-portability-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.my-account-exit-link {
+  margin: 2px 0 0;
+  text-align: center;
+}
+
+.my-account-exit-link a {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.my-account-exit-link a:hover {
+  color: var(--destructive);
+}
+
 .my-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -195,11 +217,6 @@
 
 .my-note-section {
   grid-column: 1 / -1;
-}
-
-.my-danger-section {
-  grid-column: 1 / -1;
-  border-color: color-mix(in oklch, var(--destructive) 34%, var(--border));
 }
 
 .my-legal-section {
@@ -483,24 +500,124 @@
   line-height: 1.6;
 }
 
-.my-danger-menu-button {
-  color: var(--destructive) !important;
-}
-
-.my-danger-menu-button:hover {
-  background: color-mix(in oklch, var(--destructive) 10%, transparent) !important;
-}
-
 .my-menu-list button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-.my-danger-note {
+.account-deletion-page {
+  display: grid;
+  width: min(100%, 920px);
+  gap: 18px;
+  margin: 0 auto;
+  padding: 28px max(20px, env(safe-area-inset-left)) 42px max(20px, env(safe-area-inset-right));
+}
+
+.account-deletion-hero,
+.account-deletion-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+}
+
+.account-deletion-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: clamp(18px, 3vw, 28px);
+}
+
+.account-deletion-icon {
+  display: inline-grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--destructive) 34%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--destructive) 8%, transparent);
+  color: var(--destructive);
+}
+
+.account-deletion-hero h1 {
   margin: 0;
+  font-size: clamp(26px, 4vw, 36px);
+  font-weight: 760;
+  line-height: 1.12;
+}
+
+.account-deletion-hero span {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.account-deletion-panel {
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 3vw, 24px);
+}
+
+.account-deletion-copy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.account-deletion-copy > svg {
+  margin-top: 2px;
+  color: var(--primary);
+}
+
+.account-deletion-copy h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 740;
+  line-height: 1.35;
+}
+
+.account-deletion-copy p {
+  margin: 6px 0 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.account-deletion-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.account-deletion-steps div {
+  display: grid;
+  grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+  gap: 12px;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--muted) 34%, transparent);
+  padding: 10px 12px;
+}
+
+.account-deletion-steps strong {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 730;
+}
+
+.account-deletion-steps span {
   color: var(--muted-foreground);
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.45;
+}
+
+.account-deletion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 @media (max-width: 760px) {
@@ -510,6 +627,10 @@
 
   .my-category-child-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .my-data-portability-list {
+    grid-template-columns: 1fr;
   }
 
   .my-trust-panel {
@@ -524,6 +645,14 @@
   .my-trust-actions .google-login-button {
     flex: 1 1 180px;
     justify-content: center;
+  }
+
+  .account-deletion-page {
+    padding: 18px 14px 28px;
+  }
+
+  .account-deletion-actions {
+    display: grid;
   }
 }
 
@@ -546,5 +675,11 @@
 
   .my-trust-actions {
     display: grid;
+  }
+
+  .account-deletion-hero,
+  .account-deletion-copy,
+  .account-deletion-steps div {
+    grid-template-columns: 1fr;
   }
 }
