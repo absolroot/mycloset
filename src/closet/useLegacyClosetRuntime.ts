@@ -18,10 +18,9 @@ import renderUtilsUrl from "../../assets/js/closet-render-utils.js?url"
 import storageUtilsUrl from "../../assets/js/closet-storage-utils.js?url"
 import supabaseUtilsUrl from "../../assets/js/closet-supabase-utils.js?url"
 import legacyAppUrl from "../../assets/js/app.js?url"
-import defaultGuestCsvUrl from "../../assets/temp/Closet 137abb41507c80699008e26e88fa26d9_all (2).csv?url"
-import appleWatchSampleImageUrl from "../../assets/temp/f_005fc5.webp?url"
-import newBalanceSampleImageUrl from "../../assets/temp/-3.webp?url"
-import uniqloShirtSampleImageUrl from "../../assets/temp/f_005fd1.webp?url"
+import appleWatchSampleImageUrl from "../../assets/samples/guest/apple-watch-se2-40mm.webp?url"
+import newBalanceSampleImageUrl from "../../assets/samples/guest/new-balance-996.webp?url"
+import uniqloShirtSampleImageUrl from "../../assets/samples/guest/uniqlo-flannel-check-shirt.webp?url"
 
 const guestSampleImageUrls = [
   newBalanceSampleImageUrl,
@@ -54,7 +53,6 @@ export function useLegacyClosetRuntime() {
     if (window.__closetLegacyLoaded) return
     window.__closetLegacyLoaded = true
     window.WARDROBE_SUPABASE_CREATE_CLIENT = createClient
-    window.WARDROBE_DEFAULT_CSV_URL = defaultGuestCsvUrl
     window.WARDROBE_GUEST_SAMPLE_IMAGE_URLS = guestSampleImageUrls
     window.WARDROBE_INTERNAL_DEMO_ENABLED = import.meta.env.DEV
     window.WARDROBE_TEMP_IMAGE_URLS = guestSampleImageUrls

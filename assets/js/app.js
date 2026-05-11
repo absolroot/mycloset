@@ -98,6 +98,7 @@ const {
   sameMeasurements
 } = window.closetItemUtils;
 const {
+  getFallbackGuestSampleRows,
   getGuestSampleImageUrl,
   pickGuestSampleRows
 } = window.closetGuestSampleUtils;
@@ -491,6 +492,24 @@ function getDefaultCsvUrl() {
   return `./${DEFAULT_CSV_FILE.split("/").map(encodeURIComponent).join("/")}`;
 }
 
+async function loadGuestSampleRows() {
+  try {
+    const response = await fetch(getDefaultCsvUrl());
+    if (!response.ok) throw new Error(`Guest sample CSV fetch failed: ${response.status}`);
+
+    const text = await response.text();
+    const rows = window.closetCsvUtils.parseCsv(text);
+    const sampleRows = pickGuestSampleRows(rows);
+    if (sampleRows.length === 3) return sampleRows;
+    throw new Error("Guest sample rows were not found in the default CSV.");
+  } catch (error) {
+    console.warn("Guest sample CSV unavailable; using fallback rows.", error);
+    const fallbackRows = typeof getFallbackGuestSampleRows === "function" ? getFallbackGuestSampleRows() : [];
+    if (fallbackRows.length === 3) return fallbackRows;
+    throw error;
+  }
+}
+
 function handleDocumentClick(event) {
   if (event.target === refs.detailPanel) {
     closeDetail();
@@ -790,14 +809,7 @@ async function importDefaultCsv(options = {}) {
 
 async function importGuestSampleCsv(options = {}) {
   try {
-    const response = await fetch(getDefaultCsvUrl());
-    if (!response.ok) throw new Error(`Guest sample CSV fetch failed: ${response.status}`);
-
-    const text = await response.text();
-    const rows = window.closetCsvUtils.parseCsv(text);
-    const sampleRows = pickGuestSampleRows(rows);
-    if (sampleRows.length !== 3) throw new Error("Guest sample rows were not found in the default CSV.");
-
+    const sampleRows = await loadGuestSampleRows();
     const items = csvRowsToItems(sampleRows, {
       getTemporaryImageUrl: getGuestSampleImageUrl,
       useTempImages: true
@@ -813,12 +825,8 @@ async function importGuestSampleCsv(options = {}) {
 
 async function getGuestSampleItemIds() {
   try {
-    const response = await fetch(getDefaultCsvUrl());
-    if (!response.ok) return new Set();
-
-    const text = await response.text();
-    const rows = window.closetCsvUtils.parseCsv(text);
-    return new Set(csvRowsToItems(pickGuestSampleRows(rows)).map((item) => item.id));
+    const rows = await loadGuestSampleRows();
+    return new Set(csvRowsToItems(rows).map((item) => item.id));
   } catch (error) {
     console.warn("Guest sample IDs could not be resolved", error);
     return new Set();
