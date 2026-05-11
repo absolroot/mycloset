@@ -330,14 +330,16 @@ export function MyPage({ activeTab = "overview", onTabChange, onNavigate }: MyPa
           <div className="my-settings-stack">
             <CategoryDisplaySettings />
             <DataPortabilitySettings />
-            <section className="my-section my-settings-theme-section" aria-label="화면 설정">
+            <section className="my-section" aria-label="화면 설정">
               <div className="my-section-heading">
                 <Settings2 className="size-4" />
                 <h3>화면 설정</h3>
               </div>
-              <div className="my-setting-row">
-                <span>화면 모드</span>
-                <ThemeToggle className="my-theme-toggle" />
+              <div className="my-menu-list my-settings-list">
+                <div className="my-setting-row">
+                  <span>화면 모드</span>
+                  <ThemeToggle className="my-theme-toggle" />
+                </div>
               </div>
             </section>
             {isSignedIn ? (
