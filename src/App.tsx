@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect, type CSSProperties } from "react"
-import { ArrowUp, CheckCircle2, ChevronRight, Circle, Grid2X2, Home, List, LogOut, Menu, PieChart, Plus, Search, User, X } from "lucide-react"
+import { ArrowUp, CheckCircle2, ChevronRight, Circle, Grid2X2, Home, List, LogOut, Menu, PieChart, Plus, Search, Settings2, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -164,6 +164,7 @@ function App() {
   const [activePage, setActivePage] = useState<AppPage>(() => getPageFromPath())
   const [categorySheetOpen, setCategorySheetOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [myPageTab, setMyPageTab] = useState<"overview" | "settings">("overview")
   const [searchOpen, setSearchOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [activeSheetTab, setActiveSheetTab] = useState<FilterKey>("colors")
@@ -261,6 +262,13 @@ function App() {
     }
   }
 
+  const navigateToMy = (tab: "overview" | "settings" = "overview") => {
+    setMyPageTab(tab)
+    navigateTo("my", { scrollTop: true })
+  }
+
+  const profileExitAction = auth.status === "guest" ? "exit-temporary" : "logout"
+
   const selectedParentLabel = snapshot.filters.parentCategory === "all" ? "전체" : snapshot.filters.parentCategory
   const selectedChildLabel = snapshot.filters.childCategory === "all" ? "전체" : snapshot.filters.childCategory
   const resultTitle = selectedChildLabel === "전체" ? selectedParentLabel : selectedChildLabel
@@ -344,18 +352,26 @@ function App() {
                   type="button"
                   onClick={() => {
                     setProfileMenuOpen(false)
-                    navigateTo("my")
+                    navigateToMy("overview")
                   }}
                 >
                   <User className="size-4" />
                   마이페이지
                 </button>
-                {auth.status === "signed-in" ? (
-                  <button data-action="logout" type="button" onClick={() => setProfileMenuOpen(false)}>
-                    <LogOut className="size-4" />
-                    로그아웃
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileMenuOpen(false)
+                    navigateToMy("settings")
+                  }}
+                >
+                  <Settings2 className="size-4" />
+                  설정
+                </button>
+                <button data-action={profileExitAction} type="button" onClick={() => setProfileMenuOpen(false)}>
+                  <LogOut className="size-4" />
+                  로그아웃
+                </button>
               </PopoverContent>
             </Popover>
             <Button className="button primary" data-action="new-item" type="button" aria-label="새 제품">
@@ -430,7 +446,13 @@ function App() {
           <section className={`content ${isLoading ? "is-loading" : ""}`} aria-label="옷장 목록">
 	            <StarterChecklist
 	              snapshot={starter}
-	              onNavigate={(page) => navigateTo(page, { scrollTop: true })}
+	              onNavigate={(page) => {
+                  if (page === "my") {
+                    navigateToMy("overview")
+                    return
+                  }
+                  navigateTo(page, { scrollTop: true })
+                }}
 	            />
 	            <div className="content-toolbar">
               <div className="result-heading">
@@ -500,6 +522,8 @@ function App() {
         {activePage === "my" && (
           <Suspense fallback={<PageLoading />}>
             <MyPage
+              activeTab={myPageTab}
+              onTabChange={setMyPageTab}
               onNavigate={(page) => navigateTo(page, { scrollTop: true })}
             />
           </Suspense>
@@ -742,7 +766,7 @@ function App() {
           <span>분석</span>
         </button>
 	        <button className={`nav-item ${activePage === "my" ? "active" : ""}`} type="button" onClick={() => {
-	          navigateTo("my", { scrollTop: true });
+	          navigateToMy("overview");
 	        }}>
           <User className="size-6" />
           <span>마이</span>

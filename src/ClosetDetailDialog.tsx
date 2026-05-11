@@ -456,7 +456,7 @@ export function ClosetDetailDialog() {
   }, [payload])
 
   const parentOptions = payload?.parentCategoryOptions || []
-  const CORE_PARENT_CATEGORIES = ["아우터", "상의", "하의", "원피스/스커트", "셋업/점프수트", "신발", "가방", "악세사리"]
+  const CORE_PARENT_CATEGORIES = ["아우터", "상의", "하의", "원피스/스커트", "셋업", "신발", "가방", "악세사리"]
   const allParentCategories = uniqueOrderedOptions([...CORE_PARENT_CATEGORIES, ...parentOptions, form?.parentCategory])
 
   const baseColorOptions = cleanColorOptions([...(payload?.colorOptions || []), ...(window.closetBridge?.getColorOptions?.() || [])])

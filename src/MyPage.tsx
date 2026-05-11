@@ -10,7 +10,6 @@ import {
   LogIn,
   LogOut,
   Mail,
-  RefreshCw,
   Settings2,
   ShieldCheck,
   Upload,
@@ -26,8 +25,11 @@ import { resetCategoryVisibility, setCategoryChildVisible, setCategoryParentVisi
 import { ThemeToggle } from "./theme/ThemeToggle"
 
 type MyPageNavigationTarget = Extract<AppPage, "closet" | "about" | "terms" | "privacy" | "accountDeletion">
+type MyPageTab = "overview" | "settings"
 
 type MyPageProps = {
+  activeTab?: MyPageTab
+  onTabChange?: (tab: MyPageTab) => void
   onNavigate: (page: MyPageNavigationTarget) => void
 }
 
@@ -186,7 +188,11 @@ function DataPortabilitySettings() {
   )
 }
 
-export function MyPage({ onNavigate }: MyPageProps) {
+function isMyPageTab(value: string): value is MyPageTab {
+  return value === "overview" || value === "settings"
+}
+
+export function MyPage({ activeTab = "overview", onTabChange, onNavigate }: MyPageProps) {
   const auth = useAuthSnapshot()
   const copy = getStatusCopy(auth)
   const isSignedIn = auth.status === "signed-in"
@@ -197,6 +203,9 @@ export function MyPage({ onNavigate }: MyPageProps) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) return
     event.preventDefault()
     onNavigate(page)
+  }
+  const handleTabChange = (value: string) => {
+    if (isMyPageTab(value)) onTabChange?.(value)
   }
 
   return (
@@ -218,7 +227,7 @@ export function MyPage({ onNavigate }: MyPageProps) {
         </div>
       </section>
 
-      <Tabs defaultValue="overview" className="my-tabs">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="my-tabs">
         <TabsList className="my-tabs-list" aria-label="마이페이지 메뉴">
           <TabsTrigger value="overview" className="my-tab-trigger">
             <User aria-hidden="true" />
@@ -274,7 +283,7 @@ export function MyPage({ onNavigate }: MyPageProps) {
                       ? `내 제품 ${ownItemCount.toLocaleString("ko-KR")}개와 예시 ${sampleItemCount.toLocaleString("ko-KR")}개가 이 기기에 있습니다. 다른 기기에서도 쓰려면 ZIP 백업이나 Google 동기화를 남기세요.`
                       : isSignedIn
                         ? auth.hasPendingSync
-                          ? "아직 동기화 대기 중인 변경이 있습니다. 지금 동기화를 실행하면 계정 옷장에 반영됩니다."
+                          ? "아직 반영 중인 변경이 있습니다. 잠시 후 계정 옷장에 자동으로 반영됩니다."
                           : "계정 옷장으로 저장됩니다. 로컬 백업을 함께 남기면 이미지까지 따로 보관할 수 있습니다."
                         : "로그인 전에는 게스트 모드로 먼저 써보고, 필요한 시점에 Google 동기화로 전환할 수 있습니다."}
                   </p>
@@ -293,16 +302,10 @@ export function MyPage({ onNavigate }: MyPageProps) {
                     </Button>
                   </>
                 ) : isSignedIn ? (
-                  <>
-                    <Button className="button secondary" data-action="sync-now" type="button" variant="outline" disabled={auth.syncing}>
-                      <RefreshCw className="size-4" />
-                      지금 동기화
-                    </Button>
-                    <Button className="button secondary" data-action="export-zip" type="button" variant="outline">
-                      <Archive className="size-4" />
-                      ZIP 백업
-                    </Button>
-                  </>
+                  <Button className="button secondary" data-action="export-zip" type="button" variant="outline">
+                    <Archive className="size-4" />
+                    ZIP 백업
+                  </Button>
                 ) : (
                   <Button className="google-login-button" data-action="login" type="button" variant="outline">
                     <GoogleLogo />
@@ -348,7 +351,7 @@ export function MyPage({ onNavigate }: MyPageProps) {
             <div className="my-section my-note-section">
               <div className="my-section-heading">
                 <ShieldCheck className="size-4" />
-                <h3>안내</h3>
+                <h3>계정 옷장</h3>
               </div>
               <p>
                 게스트 옷장과 로그인 계정 옷장은 분리되어 있습니다. 로그인 후에는 계정 옷장을 먼저 불러오고, 필요할 때 게스트 옷장 가져오기로 직접 추가할 수 있습니다.

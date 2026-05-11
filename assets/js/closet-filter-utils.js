@@ -27,7 +27,7 @@
     { id: "unrated", label: "미평점" }
   ];
 
-  const PARENT_CATEGORY_ORDER = categoryUtils.PARENT_CATEGORY_ORDER || ["아우터", "상의", "하의", "원피스/스커트", "셋업/점프수트", "신발", "가방", "악세사리"];
+  const PARENT_CATEGORY_ORDER = categoryUtils.PARENT_CATEGORY_ORDER || ["아우터", "상의", "하의", "원피스/스커트", "셋업", "신발", "가방", "악세사리"];
   const CHILD_CATEGORY_ORDER = categoryUtils.CHILD_CATEGORY_ORDER || {};
 
   function sortParentCategoryOptions(values) {
