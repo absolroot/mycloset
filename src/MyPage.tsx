@@ -72,7 +72,7 @@ function formatSyncState(auth: AuthSnapshot) {
   if (auth.status === "guest") return "로컬 저장"
   if (auth.syncing) return "동기화 중"
   if (auth.lastSyncError) return "동기화 확인 필요"
-  if (auth.hasPendingSync) return "동기화 대기"
+  if (auth.hasPendingSync) return "반영 중"
   if (auth.status === "signed-in") return auth.lastSyncedAt ? "동기화됨" : "로그인됨"
   return auth.supabaseReady ? "연결 준비됨" : "로그인 전"
 }
@@ -288,10 +288,6 @@ export function MyPage({ activeTab = "overview", onTabChange, onNavigate }: MyPa
                 <div>
                   <dt>계정 동기화</dt>
                   <dd>{formatSyncState(auth)}</dd>
-                </div>
-                <div>
-                  <dt>대기 작업</dt>
-                  <dd>{auth.pendingSyncCount.toLocaleString("ko-KR")}개</dd>
                 </div>
                 <div>
                   <dt>최근 동기화</dt>
