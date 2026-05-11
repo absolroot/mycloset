@@ -7,6 +7,7 @@ const TEMP_MODE_STORAGE_KEY = "closet-temporary-mode";
 const GUEST_MODE_STORAGE_KEY = TEMP_MODE_STORAGE_KEY;
 const PENDING_GUEST_MERGE_PROMPT_KEY = "closet-pending-guest-merge-prompt";
 const STARTER_PROGRESS_STORAGE_KEY = "closet-starter-checklist-v1";
+const CATEGORY_VISIBILITY_STORAGE_KEY = "closet-category-visibility-v1";
 const DB_VERSION = 1;
 const FULL_PULL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const SIGNED_IMAGE_URL_MAX_AGE_MS = 45 * 60 * 1000;
@@ -23,7 +24,9 @@ const {
 } = window.closetMeasurementUtils;
 const {
   DEFAULT_CATEGORY_TREE,
-  CHILD_CATEGORY_ORDER
+  CHILD_CATEGORY_ORDER,
+  PARENT_CATEGORY_ORDER,
+  CATEGORY_DISPLAY_PRESETS
 } = window.closetCategoryUtils;
 const {
   cleanText,
@@ -132,6 +135,7 @@ const {
 } = window.closetSupabaseUtils;
 const filterSubscribers = new Set();
 const starterSubscribers = new Set();
+const categorySettingsSubscribers = new Set();
 const STARTER_STEP_KEYS = new Set(["sampleOpened", "itemSaved", "analysisViewed", "myViewed"]);
 let lastStarterSignature = "";
 
@@ -171,7 +175,8 @@ const state = {
   lastSyncedAt: null,
   authPrompted: false,
   lastDetailSignature: "",
-  temporary: false
+  temporary: false,
+  categorySettings: readCategorySettings()
 };
 
 const refs = {};
@@ -296,39 +301,43 @@ function cacheRefs() {
 }
 
 function exposeReactBridge() {
-	window.closetBridge = {
-		  addImageFromUrl: addImageFromUrlValue,
-		  closeDetail,
-		  convertSelectedSampleToOwnItem,
-		  createStarterItem: createNewItem,
-		  deleteSelectedItem,
-		  dismissStarterChecklist,
-		  duplicateSelectedItem,
-	  getAuthSnapshot,
-	  getAutocompleteOptions,
-	  getChildCategoryOptions,
-	  getColorOptions,
-	    getFilterSnapshot,
-	    getStarterSnapshot,
-	    getImageUrl,
-	    cacheRemoteImage,
-		    getMeasurementFieldsForItem,
-	    getParentCategoryOptions,
-	    isShoeCategory,
-	    markStarterStep,
-	    openItem: selectItem,
-	    openFirstGuestSample,
-	    removeSelectedImage,
+  window.closetBridge = {
+    addImageFromUrl: addImageFromUrlValue,
+    closeDetail,
+    convertSelectedSampleToOwnItem,
+    createStarterItem: createNewItem,
+    deleteSelectedItem,
+    dismissStarterChecklist,
+    duplicateSelectedItem,
+    getAnalysisItems: () => state.items.map((item) => ({ ...item })),
+    getAuthSnapshot,
+    getAutocompleteOptions,
+    getCategorySettingsSnapshot,
+    getChildCategoryOptions,
+    getColorOptions,
+    getFilterSnapshot,
+    getImageUrl,
+    getMeasurementFieldsForItem,
+    getParentCategoryOptions,
+    getStarterSnapshot,
+    cacheRemoteImage,
+    isShoeCategory,
+    markStarterStep,
+    openFirstGuestSample,
+    openItem: selectItem,
+    removeSelectedImage,
     resetFilters,
-	    saveImageEdit: saveImageEditFromOptions,
-	    saveSelectedItemRating,
-	    saveSelectedItem: saveSelectedItemFromData,
+    saveImageEdit: saveImageEditFromOptions,
+    saveSelectedItem: saveSelectedItemFromData,
+    saveSelectedItemRating,
+    setCategoryDisplayPreset,
+    setCategoryParentVisible,
     setFilters,
+    subscribeCategorySettings,
     subscribeFilters,
     subscribeStarter,
-    getAnalysisItems: () => state.items.map(item => ({...item})),
     uploadImageFile: uploadSelectedImageFile
-	  };
+  };
 }
 
 function bindEvents() {
@@ -993,6 +1002,7 @@ async function handleCsvFile(event) {
 }
 
 function render() {
+  ensureVisibleCategoryFilter();
   syncFilterControls();
   renderFilterOptions();
   renderSummary();
@@ -1000,6 +1010,7 @@ function render() {
   renderDetail();
   updateSyncButton();
   emitFilterChange();
+  emitCategorySettingsChange();
   emitStarterChange();
 }
 
@@ -1110,14 +1121,14 @@ function buildDetailPayload(item) {
   return {
     item: clonePlainItem(item),
     primaryImage: getPrimaryImage(item),
-	    parentCategoryOptions: getParentCategoryOptions(),
-	    childCategoryOptions: getChildCategoryOptions(item.parentCategory),
-	    colorOptions: getColorOptions(),
-	    autocompleteOptions: getAutocompleteOptions(),
-	    measurementFields: getMeasurementFieldsForItem(item),
-	    initial: itemInitial(item)
-	  };
-	}
+    parentCategoryOptions: getEditableParentCategoryOptions(item.parentCategory),
+    childCategoryOptions: getChildCategoryOptions(item.parentCategory),
+    colorOptions: getColorOptions(),
+    autocompleteOptions: getAutocompleteOptions(),
+    measurementFields: getMeasurementFieldsForItem(item),
+    initial: itemInitial(item)
+  };
+}
 
 function emitDetailChange(payload) {
   window.dispatchEvent(new CustomEvent("closet:detail-change", { detail: payload }));
@@ -1156,10 +1167,214 @@ function addCustomMeasureField() {
 }
 
 function getParentCategoryOptions() {
+  return getVisibleParentCategoryOptions();
+}
+
+function getDefaultParentCategoryOptions() {
   return window.closetFilterUtils.sortParentCategoryOptions(uniqueValues([
-    ...Object.keys(DEFAULT_CATEGORY_TREE),
+    ...(PARENT_CATEGORY_ORDER || []),
+    ...Object.keys(DEFAULT_CATEGORY_TREE)
+  ]));
+}
+
+function getAllParentCategoryOptions() {
+  return window.closetFilterUtils.sortParentCategoryOptions(uniqueValues([
+    ...getDefaultParentCategoryOptions(),
     ...state.items.map((item) => item.parentCategory)
   ]));
+}
+
+function getVisibleParentCategoryOptions() {
+  const hiddenParents = new Set(state.categorySettings.hiddenParents || []);
+  return sortParentCategoriesForCurrentSettings(getAllParentCategoryOptions().filter((parent) => !hiddenParents.has(parent)));
+}
+
+function getEditableParentCategoryOptions(currentParentCategory = "") {
+  return window.closetFilterUtils.sortParentCategoryOptions(uniqueValues([
+    ...getAllParentCategoryOptions(),
+    cleanText(currentParentCategory)
+  ]));
+}
+
+function getPresetParentCategories(presetId) {
+  const preset = CATEGORY_DISPLAY_PRESETS.find((option) => option.id === presetId);
+  return preset?.parentCategories || PARENT_CATEGORY_ORDER || Object.keys(DEFAULT_CATEGORY_TREE);
+}
+
+function sortParentCategoriesForCurrentSettings(parentCategories) {
+  const presetOrder = state.categorySettings.preset === "custom"
+    ? PARENT_CATEGORY_ORDER
+    : getPresetParentCategories(state.categorySettings.preset);
+  const order = new Map((presetOrder || []).map((category, index) => [category, index]));
+
+  return [...parentCategories].sort((a, b) => {
+    const aIndex = order.has(a) ? order.get(a) : Number.POSITIVE_INFINITY;
+    const bIndex = order.has(b) ? order.get(b) : Number.POSITIVE_INFINITY;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return window.closetFilterUtils.sortParentCategoryOptions([a, b])[0] === a ? -1 : 1;
+  });
+}
+
+function getDefaultCategorySettings() {
+  return {
+    preset: "all",
+    hiddenParents: []
+  };
+}
+
+function normalizeCategorySettings(value) {
+  const presetIds = new Set([...(CATEGORY_DISPLAY_PRESETS || []).map((preset) => preset.id), "custom"]);
+  const preset = presetIds.has(cleanText(value?.preset)) ? cleanText(value.preset) : "all";
+  const hiddenParents = uniqueValues((Array.isArray(value?.hiddenParents) ? value.hiddenParents : []).map(cleanText));
+
+  return {
+    preset,
+    hiddenParents
+  };
+}
+
+function readCategorySettings() {
+  const raw = safeLocalStorageGet(CATEGORY_VISIBILITY_STORAGE_KEY);
+  if (!raw) return getDefaultCategorySettings();
+
+  try {
+    return normalizeCategorySettings(JSON.parse(raw));
+  } catch (error) {
+    console.warn("Category display settings could not be read", error);
+    return getDefaultCategorySettings();
+  }
+}
+
+function writeCategorySettings(settings) {
+  state.categorySettings = normalizeCategorySettings(settings);
+  safeLocalStorageSet(CATEGORY_VISIBILITY_STORAGE_KEY, JSON.stringify(state.categorySettings));
+}
+
+function getCategorySettingsSnapshot() {
+  const allParents = getAllParentCategoryOptions();
+  const hiddenParentSet = new Set(state.categorySettings.hiddenParents || []);
+  const parentCounts = countItemsByParentCategory();
+
+  return {
+    selectedPreset: state.categorySettings.preset || "all",
+    presets: CATEGORY_DISPLAY_PRESETS.map((preset) => ({
+      id: preset.id,
+      label: preset.label,
+      description: preset.description,
+      parentCategories: [...preset.parentCategories]
+    })),
+    allParents,
+    visibleParents: getVisibleParentCategoryOptions(),
+    hiddenParents: allParents.filter((parent) => hiddenParentSet.has(parent)),
+    parentCounts
+  };
+}
+
+function countItemsByParentCategory() {
+  return state.items.reduce((counts, item) => {
+    const parent = cleanText(item.parentCategory);
+    if (parent) counts[parent] = (counts[parent] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function setCategoryDisplayPreset(presetId) {
+  const preset = CATEGORY_DISPLAY_PRESETS.find((option) => option.id === cleanText(presetId));
+  if (!preset) return getCategorySettingsSnapshot();
+
+  const presetParents = new Set(getPresetParentCategories(preset.id));
+  const defaultParents = getDefaultParentCategoryOptions();
+  const hiddenParents = preset.id === "all"
+    ? []
+    : defaultParents.filter((parent) => !presetParents.has(parent));
+
+  writeCategorySettings({
+    preset: preset.id,
+    hiddenParents
+  });
+  ensureVisibleCategoryFilter();
+  render();
+
+  return getCategorySettingsSnapshot();
+}
+
+function setCategoryParentVisible(parentCategory, visible) {
+  const parent = cleanText(parentCategory);
+  const allParents = getAllParentCategoryOptions();
+  if (!parent || !allParents.includes(parent)) return getCategorySettingsSnapshot();
+
+  const hiddenParents = new Set(state.categorySettings.hiddenParents || []);
+  if (visible) {
+    hiddenParents.delete(parent);
+  } else {
+    const visibleParentCount = allParents.filter((category) => !hiddenParents.has(category)).length;
+    if (visibleParentCount <= 1) {
+      showToast("카테고리는 하나 이상 보여야 합니다.");
+      return getCategorySettingsSnapshot();
+    }
+    hiddenParents.add(parent);
+  }
+
+  writeCategorySettings({
+    preset: "custom",
+    hiddenParents: [...hiddenParents]
+  });
+  ensureVisibleCategoryFilter();
+  render();
+
+  return getCategorySettingsSnapshot();
+}
+
+function subscribeCategorySettings(listener) {
+  if (typeof listener !== "function") return () => {};
+  categorySettingsSubscribers.add(listener);
+  listener(getCategorySettingsSnapshot());
+  return () => categorySettingsSubscribers.delete(listener);
+}
+
+function emitCategorySettingsChange() {
+  const snapshot = getCategorySettingsSnapshot();
+  window.dispatchEvent(new CustomEvent("closet:category-settings-change", { detail: snapshot }));
+  categorySettingsSubscribers.forEach((listener) => listener(snapshot));
+}
+
+function ensureVisibleCategoryFilter() {
+  const visibleParents = getVisibleParentCategoryOptions();
+  let changed = false;
+
+  if (state.filters.parentCategory !== "all" && !visibleParents.includes(state.filters.parentCategory)) {
+    state.filters.parentCategory = "all";
+    state.filters.childCategory = "all";
+    changed = true;
+  }
+
+  if (state.filters.parentCategory !== "all" && state.filters.childCategory !== "all") {
+    const childCategories = getChildCategoryOptions(state.filters.parentCategory);
+    if (!childCategories.includes(state.filters.childCategory)) {
+      state.filters.childCategory = "all";
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function getAllVisibleDefaultChildCategories() {
+  return getVisibleParentCategoryOptions().flatMap((parent) => DEFAULT_CATEGORY_TREE[parent] || []);
+}
+
+function getAllVisibleItemChildCategories() {
+  const visibleParents = new Set(getVisibleParentCategoryOptions());
+  return uniqueValues(state.items
+    .filter((item) => visibleParents.has(item.parentCategory))
+    .map((item) => item.category));
+}
+
+function getAllChildCategoryOptions() {
+  return orderedUniqueCategories([
+    getAllVisibleItemChildCategories(),
+    getAllVisibleDefaultChildCategories()
+  ]);
 }
 
 function getChildCategoryOptions(parentCategory) {
@@ -1169,12 +1384,6 @@ function getChildCategoryOptions(parentCategory) {
     .filter((item) => !parent || item.parentCategory === parent)
     .map((item) => item.category);
   return sortChildCategoryOptions(parent, uniqueValues([...defaults, ...fromItems]));
-}
-
-function getAllChildCategoryOptions() {
-  const fromItems = uniqueValues(state.items.map((item) => item.category));
-  const defaults = Object.values(DEFAULT_CATEGORY_TREE).flat();
-  return orderedUniqueCategories([fromItems, defaults]);
 }
 
 function orderedUniqueCategories(groups) {

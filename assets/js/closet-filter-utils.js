@@ -2,6 +2,7 @@
 
 (function exposeClosetFilterUtils() {
   const cleanText = window.closetFormatUtils?.cleanText || ((value) => String(value ?? "").trim());
+  const categoryUtils = window.closetCategoryUtils || {};
 
   const PRICE_RANGE_OPTIONS = [
     { id: "none", label: "0원" },
@@ -26,10 +27,8 @@
     { id: "unrated", label: "미평점" }
   ];
 
-  const PARENT_CATEGORY_ORDER = ["아우터", "상의", "하의", "신발", "가방", "악세사리"];
-  const CHILD_CATEGORY_ORDER = {
-    아우터: ["코트", "블레이저", "야상", "패딩", "바람막이/플리스", "재킷"]
-  };
+  const PARENT_CATEGORY_ORDER = categoryUtils.PARENT_CATEGORY_ORDER || ["아우터", "상의", "하의", "신발", "가방", "악세사리"];
+  const CHILD_CATEGORY_ORDER = categoryUtils.CHILD_CATEGORY_ORDER || {};
 
   function sortParentCategoryOptions(values) {
     const order = new Map(PARENT_CATEGORY_ORDER.map((category, index) => [category, index]));
