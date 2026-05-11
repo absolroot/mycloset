@@ -14,6 +14,12 @@ html {
   font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Noto Sans KR", Arial, sans-serif;
 }
 
+@media (min-width: 981px) {
+  html {
+    scrollbar-gutter: stable;
+  }
+}
+
 body {
   min-height: 100%;
   margin: 0;

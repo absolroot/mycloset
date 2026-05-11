@@ -34,35 +34,35 @@
 .measurement-parent-tab,
 .measurement-child-tab {
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--border);
+  box-shadow: var(--border-inset);
 }
 
 .button.primary {
-  box-shadow: inset 0 0 0 1px var(--primary);
+  box-shadow: var(--border-inset-primary);
 }
 
 .button.danger,
 .detail-danger-secondary {
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--destructive) 28%, var(--border));
+  box-shadow: var(--border-inset-danger);
 }
 
 .detail-danger-secondary:hover {
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--destructive) 52%, var(--border));
+  box-shadow: var(--border-inset-danger-strong);
 }
 
 .item-tile:hover,
 .item-tile.active {
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--ring), var(--shadow-soft);
+  box-shadow: var(--border-inset-ring), var(--shadow-soft);
 }
 
 .category-grid-btn:hover,
 .summary-hero-card:hover,
 .analysis-glass-card:hover {
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--ring);
+  box-shadow: var(--border-inset-ring);
 }
 
 .category-grid-btn.active,
@@ -71,15 +71,15 @@
 .measurement-parent-tab.is-active,
 .measurement-child-tab.is-active {
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--primary);
+  box-shadow: var(--border-inset-primary);
 }
 
 .category-sheet-column button.active {
-  box-shadow: inset 0 0 0 1px var(--border), 0 1px 2px rgb(0 0 0 / 0.05);
+  box-shadow: var(--border-inset), var(--shadow-float);
 }
 
 .category-sheet-children button.active {
-  box-shadow: inset 0 0 0 1px var(--primary);
+  box-shadow: var(--border-inset-primary);
 }
 
 .brand-filter-search:focus-within,
@@ -95,11 +95,11 @@
 .image-url-row input:focus,
 .search-sheet-field input:focus {
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--ring), 0 0 0 3px color-mix(in oklch, var(--ring) 18%, transparent);
+  box-shadow: var(--focus-ring-shadow);
 }
 
 .scroll-top-button {
-  box-shadow: inset 0 0 0 1px var(--border), 0 10px 26px rgb(0 0 0 / 0.16);
+  box-shadow: var(--border-inset), var(--shadow-floating-action);
 }
 
 .detail-action-menu .button {
@@ -113,6 +113,6 @@
   }
 
   .detail-cover::after {
-    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border) 58%, var(--image-surface));
+    box-shadow: var(--border-inset-image);
   }
 }

@@ -26,8 +26,8 @@ export function ColorSection({ stats }: { stats: ColorStats[] }) {
           <div className="swatch-grid mt-6">
             {stats.map((stat) => (
               <div key={stat.color} className="swatch-item">
-                <div 
-                  className="swatch-color border border-border/50 shadow-sm" 
+                <div
+                  className="swatch-color"
                   style={{ background: colorToHex(stat.color) }}
                 />
                 <div className="swatch-info">

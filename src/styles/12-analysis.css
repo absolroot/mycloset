@@ -223,6 +223,7 @@
   height: 2rem;
   border-radius: 50%;
   border: 1px solid var(--border);
+  box-shadow: var(--shadow-float);
   flex-shrink: 0;
 }
 
@@ -469,11 +470,30 @@
 }
 
 .recent-item-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
   color: inherit;
+  padding: 0.5rem;
+  text-align: left;
+  transition: border-color 120ms ease, background 120ms ease;
 }
 
 .recent-item-card:hover {
+  border-color: var(--ring);
   background: var(--accent);
+}
+
+.recent-item-image {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--muted) center / cover;
+  box-shadow: var(--shadow-float);
 }
 
 .measurement-category-control {

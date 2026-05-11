@@ -30,7 +30,8 @@
 }
 
 .theme-toggle-button[aria-pressed="true"] {
-  border-color: color-mix(in oklch, var(--ring) 70%, var(--border));
+  border-color: transparent;
+  box-shadow: var(--border-inset);
 }
 
 .login-theme-action {

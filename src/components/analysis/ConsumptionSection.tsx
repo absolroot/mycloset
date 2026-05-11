@@ -200,17 +200,17 @@ export function ConsumptionSection({ items }: { items: ClosetItem[] }) {
                 {recentItems.map(item => {
                   const imageUrl = getImageUrl(item);
                   return (
-		                  <button key={item.id} type="button" onClick={() => openItem(item.id)} className="recent-item-card border border-border/60 hover:border-ring rounded-md p-2 bg-card flex flex-col gap-2 transition-all text-left">
-		                    <div
-		                      className="w-full aspect-[4/5] bg-muted bg-center bg-cover rounded overflow-hidden shadow-sm"
-                      style={imageUrl ? { backgroundImage: `url(${imageUrl})` } : undefined}
-                    />
-                    <div className="flex flex-col gap-0.5 overflow-hidden">
-                      <div className="font-medium text-sm truncate">{item.name || "이름 없음"}</div>
-	                      <div className="text-xs text-muted-foreground truncate">{item.brand || "브랜드 없음"}</div>
-	                      <div className="text-[10px] text-muted-foreground mt-0.5">{item.purchaseDate}</div>
-	                    </div>
-		                  </button>
+                    <button key={item.id} type="button" onClick={() => openItem(item.id)} className="recent-item-card">
+                      <div
+                        className="recent-item-image"
+                        style={imageUrl ? { backgroundImage: `url(${imageUrl})` } : undefined}
+                      />
+                      <div className="flex flex-col gap-0.5 overflow-hidden">
+                        <div className="font-medium text-sm truncate">{item.name || "이름 없음"}</div>
+                        <div className="text-xs text-muted-foreground truncate">{item.brand || "브랜드 없음"}</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5">{item.purchaseDate}</div>
+                      </div>
+                    </button>
                   );
                 })}
               </div>
@@ -225,7 +225,7 @@ export function ConsumptionSection({ items }: { items: ClosetItem[] }) {
           </div>
           <CardHeader className="analysis-compact-card-header border-b border-border/40 relative z-10 shrink-0">
             <CardTitle className="text-base flex items-center gap-2">
-              <TrendingDown className="size-4 text-green-500" />
+              <TrendingDown className="size-4 text-positive" />
               할인율 현황
             </CardTitle>
           </CardHeader>

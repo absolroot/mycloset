@@ -456,7 +456,7 @@
 
 .brand-filter-search:focus-within {
   border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 18%, transparent);
+  box-shadow: var(--focus-ring-shadow);
 }
 
 .brand-filter-search .brand-filter-input[type="search"]::-webkit-search-decoration,
@@ -942,7 +942,7 @@
 
 .category-sheet-column button.active {
   background: var(--card);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  box-shadow: var(--shadow-float);
 }
 
 .category-sheet-children button.active {

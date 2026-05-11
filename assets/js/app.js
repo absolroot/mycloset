@@ -1340,26 +1340,26 @@ function getStarterSnapshot() {
   const steps = [
     {
       key: "sampleOpened",
-      label: "예시 제품 열어보기",
-      description: "샘플 상세에서 기록할 정보를 확인합니다.",
+      label: "샘플 제품 살펴보기",
+      description: "사진, 가격, 사이즈를 어디에 적는지 확인합니다.",
       done: Boolean(progress.sampleOpened || hasOwnItems)
     },
     {
       key: "itemSaved",
-      label: "내 제품 1개 저장",
-      description: "예시를 복사하거나 새 제품을 저장합니다.",
+      label: "내 제품 하나 추가",
+      description: "샘플을 복사하거나 새 제품을 직접 저장합니다.",
       done: Boolean(progress.itemSaved || hasOwnItems)
     },
     {
       key: "analysisViewed",
-      label: "분석 미리보기",
-      description: "색상, 브랜드, 구매 흐름을 확인합니다.",
+      label: "내 분석 확인하기",
+      description: "색상, 브랜드, 구매 흐름이 어떻게 잡히는지 봅니다.",
       done: Boolean(progress.analysisViewed)
     },
     {
       key: "myViewed",
-      label: "백업/동기화 확인",
-      description: "로컬 저장, ZIP 백업, Google 동기화 차이를 확인합니다.",
+      label: "저장 방식 정하기",
+      description: "로컬 저장, ZIP 백업, Google 동기화 중 맞는 방식을 고릅니다.",
       done: Boolean(progress.myViewed)
     }
   ];

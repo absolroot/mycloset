@@ -270,7 +270,7 @@
 .measure-grid input:focus,
 .image-url-row input:focus {
   border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 22%, transparent);
+  box-shadow: var(--focus-ring-shadow);
 }
 
 .autocomplete-shell {
@@ -350,5 +350,5 @@
 .view-button[data-state="on"] {
   background: var(--card);
   color: var(--foreground);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  box-shadow: var(--shadow-float);
 }

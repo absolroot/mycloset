@@ -124,7 +124,7 @@ function StarterChecklist({
       <div className="starter-checklist-head">
         <div>
           <p className="eyebrow">처음 3분</p>
-          <h2>예시를 내 옷장으로 바꾸는 순서</h2>
+          <h2>샘플을 보며 내 옷장 시작하기</h2>
         </div>
         <div className="starter-progress" aria-label={`${snapshot.completedCount}/${snapshot.totalCount} 완료`}>
           {snapshot.completedCount}/{snapshot.totalCount}

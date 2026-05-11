@@ -18,6 +18,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-positive: var(--positive);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -45,6 +48,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -64,6 +68,15 @@
   --header-height: 72px;
   --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.04), 0 10px 30px rgb(0 0 0 / 0.04);
   --shadow-modal: 0 24px 80px rgb(0 0 0 / 0.22);
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-floating-action: 0 10px 26px rgb(0 0 0 / 0.16);
+  --border-inset: inset 0 0 0 1px var(--border);
+  --border-inset-primary: inset 0 0 0 1px var(--primary);
+  --border-inset-ring: inset 0 0 0 1px var(--ring);
+  --border-inset-danger: inset 0 0 0 1px color-mix(in oklch, var(--destructive) 28%, var(--border));
+  --border-inset-danger-strong: inset 0 0 0 1px color-mix(in oklch, var(--destructive) 52%, var(--border));
+  --border-inset-image: inset 0 0 0 1px color-mix(in oklch, var(--border) 58%, var(--image-surface));
+  --focus-ring-shadow: var(--border-inset-ring), 0 0 0 3px color-mix(in oklch, var(--ring) 18%, transparent);
 }
 
 html[data-theme="dark"] {
@@ -83,6 +96,7 @@ html[data-theme="dark"] {
   --accent: oklch(0.31 0.006 286);
   --accent-foreground: oklch(0.96 0.002 286);
   --destructive: oklch(0.66 0.18 25);
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.34 0.006 286);
   --input: oklch(0.36 0.006 286);
   --ring: oklch(0.62 0.006 286);
