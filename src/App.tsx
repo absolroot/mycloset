@@ -120,10 +120,10 @@ function StarterChecklist({
   }
 
   return (
-    <section className="starter-checklist" aria-label="처음 시작 체크리스트">
+    <section className="starter-checklist" aria-label="튜토리얼">
       <div className="starter-checklist-head">
         <div>
-          <p className="eyebrow">처음 3분</p>
+          <p className="eyebrow">튜토리얼</p>
           <h2>샘플을 보며 내 옷장 시작하기</h2>
         </div>
         <div className="starter-progress" aria-label={`${snapshot.completedCount}/${snapshot.totalCount} 완료`}>
@@ -148,7 +148,7 @@ function StarterChecklist({
         ))}
       </div>
       <button className="starter-dismiss" type="button" onClick={() => getStarterBridge()?.dismissStarterChecklist?.()}>
-        지금은 숨기기
+        숨기기
       </button>
     </section>
   )

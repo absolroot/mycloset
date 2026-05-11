@@ -1366,8 +1366,8 @@ function getStarterSnapshot() {
     },
     {
       key: "myViewed",
-      label: "저장 방식 정하기",
-      description: "로컬 저장, ZIP 백업, Google 동기화 중 맞는 방식을 고릅니다.",
+      label: "온라인 연동하기",
+      description: "Google 동기화와 ZIP 백업 차이를 확인합니다.",
       done: Boolean(progress.myViewed)
     }
   ];
@@ -1491,7 +1491,9 @@ async function createNewItem() {
 }
 
 function openFirstGuestSample() {
-  const sample = state.items.find((item) => isGuestSampleItem(item));
+  const sample = state.items.find((item) =>
+    isGuestSampleItem(item) && [item.name, item.category].filter(Boolean).join(" ").includes("셔츠")
+  ) || state.items.find((item) => isGuestSampleItem(item));
   const fallback = state.items[0];
   const item = sample || fallback;
   if (!item) {
