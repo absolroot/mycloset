@@ -293,9 +293,21 @@ export function MyPage({ onNavigate }: MyPageProps) {
       </section>
 
       <Tabs defaultValue="overview" className="my-tabs">
-        <TabsList className="my-tabs-list" aria-label="마이페이지 탭">
-          <TabsTrigger value="overview">내 정보</TabsTrigger>
-          <TabsTrigger value="settings">설정</TabsTrigger>
+        <TabsList className="my-tabs-list" aria-label="마이페이지 메뉴">
+          <TabsTrigger value="overview" className="my-tab-trigger">
+            <User aria-hidden="true" />
+            <span>
+              <strong>내 정보</strong>
+              <small>계정 상태와 서비스 정보</small>
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="my-tab-trigger">
+            <Settings2 aria-hidden="true" />
+            <span>
+              <strong>설정</strong>
+              <small>화면, 카테고리, 백업</small>
+            </span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="my-tab-content">
