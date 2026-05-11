@@ -333,6 +333,7 @@
 .my-legal-list a {
   min-height: 46px;
   border: 1px solid var(--border);
+  border-color: color-mix(in oklch, var(--foreground) 28%, var(--border));
   background: color-mix(in oklch, var(--muted) 44%, transparent);
 }
 
