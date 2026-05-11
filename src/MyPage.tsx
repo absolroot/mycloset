@@ -383,18 +383,18 @@ export function MyPage({ onNavigate }: MyPageProps) {
 
         <TabsContent value="settings" className="my-tab-content">
           <div className="my-settings-stack">
+            <CategoryDisplaySettings />
+            <DataPortabilitySettings />
             <section className="my-section my-settings-theme-section" aria-label="화면 설정">
               <div className="my-section-heading">
                 <Settings2 className="size-4" />
-                <h3>설정</h3>
+                <h3>화면 설정</h3>
               </div>
               <div className="my-setting-row">
                 <span>화면 모드</span>
                 <ThemeToggle className="my-theme-toggle" />
               </div>
             </section>
-            <CategoryDisplaySettings />
-            <DataPortabilitySettings />
           </div>
         </TabsContent>
         {isSignedIn ? (

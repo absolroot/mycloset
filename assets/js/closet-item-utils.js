@@ -170,7 +170,7 @@
 
   function isShoeCategory(item) {
     const text = [item.parentCategory, item.category].filter(Boolean).join(" ");
-    return /신발|스니커즈|구두|샌들|부츠/.test(text);
+    return /신발|스니커즈|샌들|구두|로퍼|플랫슈즈|힐\/펌프스|부츠|슬리퍼|기능화/.test(text);
   }
 
   function getPrimaryImage(item) {
