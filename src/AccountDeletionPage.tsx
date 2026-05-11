@@ -20,7 +20,7 @@ export function AccountDeletionPage({ onNavigate }: AccountDeletionPageProps) {
         <div>
           <p className="eyebrow">Account</p>
           <h1 id="accountDeletionTitle">회원 탈퇴</h1>
-          <span>계정 삭제와 옷장 데이터 삭제 요청을 한 곳에서 처리합니다.</span>
+          <span>탈퇴 전에 보관할 기록을 먼저 백업해 주세요.</span>
         </div>
       </header>
 
@@ -28,26 +28,25 @@ export function AccountDeletionPage({ onNavigate }: AccountDeletionPageProps) {
         <div className="account-deletion-copy">
           <ShieldCheck className="size-5" />
           <div>
-            <h2>탈퇴 요청 시 옷장 데이터 삭제도 함께 요청됩니다.</h2>
+            <h2>탈퇴하면 계정과 연결된 옷장 정보도 함께 삭제됩니다.</h2>
             <p>
-              마이페이지에서는 계정 옷장 데이터만 단독으로 삭제하는 버튼을 제공하지 않습니다. 잘못된 삭제 범위를 줄이기 위해
-              탈퇴 요청 화면에서만 계정과 연결된 데이터 삭제를 함께 접수합니다.
+              삭제된 정보는 되돌리기 어렵습니다. 보관하고 싶은 기록이 있다면 아래 백업 버튼으로 먼저 내려받아 주세요.
             </p>
           </div>
         </div>
 
         <div className="account-deletion-steps">
           <div>
-            <strong>1. 백업</strong>
-            <span>필요한 기록은 먼저 JSON 또는 ZIP으로 내보냅니다.</span>
+            <strong>1. 기록 백업</strong>
+            <span>나중에 다시 보고 싶은 기록이 있다면 파일로 내려받습니다.</span>
           </div>
           <div>
-            <strong>2. 탈퇴 요청</strong>
-            <span>요청이 접수되면 운영 처리 과정에서 계정과 연결된 옷장 데이터 삭제가 함께 진행됩니다.</span>
+            <strong>2. 탈퇴 신청</strong>
+            <span>탈퇴 신청을 하면 계정과 연결된 옷장 정보도 함께 정리됩니다.</span>
           </div>
           <div>
-            <strong>3. 처리 확인</strong>
-            <span>삭제가 완료된 데이터는 복구가 어려울 수 있습니다.</span>
+            <strong>3. 완료 안내</strong>
+            <span>처리가 끝나면 더 이상 해당 계정의 옷장 정보를 사용할 수 없습니다.</span>
           </div>
         </div>
 
@@ -68,7 +67,7 @@ export function AccountDeletionPage({ onNavigate }: AccountDeletionPageProps) {
               </Button>
               <Button data-action="request-account-deletion" data-withdrawal-context="account-deletion" type="button" variant="destructive" disabled={auth.syncing}>
                 <UserX className="size-4" />
-                회원 탈퇴 요청
+                회원 탈퇴 신청
               </Button>
             </>
           ) : (

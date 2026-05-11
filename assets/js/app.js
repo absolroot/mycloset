@@ -3039,8 +3039,8 @@ async function requestAccountDeletion() {
   const isWithdrawalPage = window.location.pathname === "/account-deletion";
   const confirmed = window.confirm(
     isWithdrawalPage
-      ? "회원 탈퇴 요청을 접수합니다. 계정과 연결된 옷장 데이터 삭제도 함께 요청됩니다. 먼저 백업했는지 확인해주세요. 계속할까요?"
-      : "회원 탈퇴 페이지로 이동해 요청해주세요."
+      ? "회원 탈퇴를 신청할까요? 계정과 연결된 옷장 정보도 함께 삭제되며, 삭제 후에는 복구가 어려울 수 있습니다. 계속할까요?"
+      : "회원 탈퇴 화면으로 이동할까요?"
   );
   if (!confirmed) return;
   if (!isWithdrawalPage) {
@@ -3055,16 +3055,12 @@ async function requestAccountDeletion() {
     const result = await requestSupabaseAccountDeletion(state.supabase, {
       userId: state.session.user.id,
       email: state.session.user.email,
-      note: "Requested from account deletion page; include wardrobe data deletion."
+      note: "Account deletion requested from the withdrawal page."
     });
-    showToast(result.alreadyRequested ? "이미 회원 탈퇴 요청이 접수되어 있습니다." : "회원 탈퇴 요청을 접수했습니다.");
+    showToast(result.alreadyRequested ? "이미 회원 탈퇴 신청이 진행 중입니다." : "회원 탈퇴 신청이 완료되었습니다.");
   } catch (error) {
     console.error(error);
-    if (isMissingRelationError(error)) {
-      showToast("회원 탈퇴 요청 테이블이 없습니다. 최신 schema.sql을 적용해주세요.");
-    } else {
-      showToast("회원 탈퇴 요청을 접수하지 못했습니다.");
-    }
+    showToast("회원 탈퇴 신청을 완료하지 못했습니다. 잠시 후 다시 시도해주세요.");
   } finally {
     state.syncing = false;
     updateSyncButton();
