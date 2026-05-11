@@ -25,8 +25,7 @@ const {
 const {
   DEFAULT_CATEGORY_TREE,
   CHILD_CATEGORY_ORDER,
-  PARENT_CATEGORY_ORDER,
-  CATEGORY_DISPLAY_PRESETS
+  PARENT_CATEGORY_ORDER
 } = window.closetCategoryUtils;
 const {
   cleanText,
@@ -330,7 +329,8 @@ function exposeReactBridge() {
     saveImageEdit: saveImageEditFromOptions,
     saveSelectedItem: saveSelectedItemFromData,
     saveSelectedItemRating,
-    setCategoryDisplayPreset,
+    resetCategoryVisibility,
+    setCategoryChildVisible,
     setCategoryParentVisible,
     setFilters,
     subscribeCategorySettings,
@@ -1185,8 +1185,7 @@ function getAllParentCategoryOptions() {
 }
 
 function getVisibleParentCategoryOptions() {
-  const hiddenParents = new Set(state.categorySettings.hiddenParents || []);
-  return sortParentCategoriesForCurrentSettings(getAllParentCategoryOptions().filter((parent) => !hiddenParents.has(parent)));
+  return getAllParentCategoryOptions().filter(isParentCategoryVisible);
 }
 
 function getEditableParentCategoryOptions(currentParentCategory = "") {
@@ -1196,40 +1195,35 @@ function getEditableParentCategoryOptions(currentParentCategory = "") {
   ]));
 }
 
-function getPresetParentCategories(presetId) {
-  const preset = CATEGORY_DISPLAY_PRESETS.find((option) => option.id === presetId);
-  return preset?.parentCategories || PARENT_CATEGORY_ORDER || Object.keys(DEFAULT_CATEGORY_TREE);
-}
-
-function sortParentCategoriesForCurrentSettings(parentCategories) {
-  const presetOrder = state.categorySettings.preset === "custom"
-    ? PARENT_CATEGORY_ORDER
-    : getPresetParentCategories(state.categorySettings.preset);
-  const order = new Map((presetOrder || []).map((category, index) => [category, index]));
-
-  return [...parentCategories].sort((a, b) => {
-    const aIndex = order.has(a) ? order.get(a) : Number.POSITIVE_INFINITY;
-    const bIndex = order.has(b) ? order.get(b) : Number.POSITIVE_INFINITY;
-    if (aIndex !== bIndex) return aIndex - bIndex;
-    return window.closetFilterUtils.sortParentCategoryOptions([a, b])[0] === a ? -1 : 1;
-  });
-}
-
 function getDefaultCategorySettings() {
   return {
-    preset: "all",
-    hiddenParents: []
+    version: 2,
+    hiddenParents: [],
+    hiddenChildren: {}
   };
 }
 
+function normalizeHiddenChildren(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  return Object.entries(value).reduce((result, [parentCategory, childCategories]) => {
+    const parent = cleanText(parentCategory);
+    const hiddenChildren = uniqueValues((Array.isArray(childCategories) ? childCategories : []).map(cleanText));
+    if (parent && hiddenChildren.length) result[parent] = hiddenChildren;
+    return result;
+  }, {});
+}
+
 function normalizeCategorySettings(value) {
-  const presetIds = new Set([...(CATEGORY_DISPLAY_PRESETS || []).map((preset) => preset.id), "custom"]);
-  const preset = presetIds.has(cleanText(value?.preset)) ? cleanText(value.preset) : "all";
+  if (value?.preset) return getDefaultCategorySettings();
+
   const hiddenParents = uniqueValues((Array.isArray(value?.hiddenParents) ? value.hiddenParents : []).map(cleanText));
+  const hiddenChildren = normalizeHiddenChildren(value?.hiddenChildren || value?.hiddenChildrenByParent);
 
   return {
-    preset,
-    hiddenParents
+    version: 2,
+    hiddenParents,
+    hiddenChildren
   };
 }
 
@@ -1253,20 +1247,33 @@ function writeCategorySettings(settings) {
 function getCategorySettingsSnapshot() {
   const allParents = getAllParentCategoryOptions();
   const hiddenParentSet = new Set(state.categorySettings.hiddenParents || []);
+  const hiddenChildren = normalizeHiddenChildren(state.categorySettings.hiddenChildren);
   const parentCounts = countItemsByParentCategory();
+  const childCounts = countItemsByChildCategory();
+  const tree = allParents.map((parent) => {
+    const children = getChildCategoryOptions(parent).map((child) => ({
+      name: child,
+      visible: isChildCategoryVisible(parent, child),
+      count: childCounts[parent]?.[child] || 0
+    }));
+
+    return {
+      name: parent,
+      visible: isParentCategoryVisible(parent),
+      count: parentCounts[parent] || 0,
+      children
+    };
+  });
 
   return {
-    selectedPreset: state.categorySettings.preset || "all",
-    presets: CATEGORY_DISPLAY_PRESETS.map((preset) => ({
-      id: preset.id,
-      label: preset.label,
-      description: preset.description,
-      parentCategories: [...preset.parentCategories]
-    })),
     allParents,
     visibleParents: getVisibleParentCategoryOptions(),
     hiddenParents: allParents.filter((parent) => hiddenParentSet.has(parent)),
-    parentCounts
+    hiddenChildren,
+    parentCounts,
+    tree,
+    totalChildCount: tree.reduce((total, parent) => total + parent.children.length, 0),
+    visibleChildCount: tree.reduce((total, parent) => total + (parent.visible ? parent.children.filter((child) => child.visible).length : 0), 0)
   };
 }
 
@@ -1278,20 +1285,19 @@ function countItemsByParentCategory() {
   }, {});
 }
 
-function setCategoryDisplayPreset(presetId) {
-  const preset = CATEGORY_DISPLAY_PRESETS.find((option) => option.id === cleanText(presetId));
-  if (!preset) return getCategorySettingsSnapshot();
+function countItemsByChildCategory() {
+  return state.items.reduce((counts, item) => {
+    const parent = cleanText(item.parentCategory);
+    const child = cleanText(item.category);
+    if (!parent || !child) return counts;
+    if (!counts[parent]) counts[parent] = {};
+    counts[parent][child] = (counts[parent][child] || 0) + 1;
+    return counts;
+  }, {});
+}
 
-  const presetParents = new Set(getPresetParentCategories(preset.id));
-  const defaultParents = getDefaultParentCategoryOptions();
-  const hiddenParents = preset.id === "all"
-    ? []
-    : defaultParents.filter((parent) => !presetParents.has(parent));
-
-  writeCategorySettings({
-    preset: preset.id,
-    hiddenParents
-  });
+function resetCategoryVisibility() {
+  writeCategorySettings(getDefaultCategorySettings());
   ensureVisibleCategoryFilter();
   render();
 
@@ -1316,8 +1322,43 @@ function setCategoryParentVisible(parentCategory, visible) {
   }
 
   writeCategorySettings({
-    preset: "custom",
+    ...state.categorySettings,
     hiddenParents: [...hiddenParents]
+  });
+  ensureVisibleCategoryFilter();
+  render();
+
+  return getCategorySettingsSnapshot();
+}
+
+function setCategoryChildVisible(parentCategory, childCategory, visible) {
+  const parent = cleanText(parentCategory);
+  const child = cleanText(childCategory);
+  const allParents = getAllParentCategoryOptions();
+  const allChildren = getChildCategoryOptions(parent);
+  if (!parent || !child || !allParents.includes(parent) || !allChildren.includes(child)) return getCategorySettingsSnapshot();
+
+  const hiddenParents = new Set(state.categorySettings.hiddenParents || []);
+  const hiddenChildren = normalizeHiddenChildren(state.categorySettings.hiddenChildren);
+  const childSet = new Set(hiddenChildren[parent] || []);
+
+  if (visible) {
+    hiddenParents.delete(parent);
+    childSet.delete(child);
+  } else {
+    childSet.add(child);
+  }
+
+  if (childSet.size) {
+    hiddenChildren[parent] = [...childSet];
+  } else {
+    delete hiddenChildren[parent];
+  }
+
+  writeCategorySettings({
+    ...state.categorySettings,
+    hiddenParents: [...hiddenParents],
+    hiddenChildren
   });
   ensureVisibleCategoryFilter();
   render();
@@ -1349,7 +1390,7 @@ function ensureVisibleCategoryFilter() {
   }
 
   if (state.filters.parentCategory !== "all" && state.filters.childCategory !== "all") {
-    const childCategories = getChildCategoryOptions(state.filters.parentCategory);
+    const childCategories = getVisibleChildCategoryOptions(state.filters.parentCategory);
     if (!childCategories.includes(state.filters.childCategory)) {
       state.filters.childCategory = "all";
       changed = true;
@@ -1360,13 +1401,15 @@ function ensureVisibleCategoryFilter() {
 }
 
 function getAllVisibleDefaultChildCategories() {
-  return getVisibleParentCategoryOptions().flatMap((parent) => DEFAULT_CATEGORY_TREE[parent] || []);
+  return getVisibleParentCategoryOptions()
+    .flatMap((parent) => (DEFAULT_CATEGORY_TREE[parent] || [])
+      .filter((category) => isChildCategoryVisible(parent, category)));
 }
 
 function getAllVisibleItemChildCategories() {
   const visibleParents = new Set(getVisibleParentCategoryOptions());
   return uniqueValues(state.items
-    .filter((item) => visibleParents.has(item.parentCategory))
+    .filter((item) => visibleParents.has(item.parentCategory) && isChildCategoryVisible(item.parentCategory, item.category))
     .map((item) => item.category));
 }
 
@@ -1384,6 +1427,25 @@ function getChildCategoryOptions(parentCategory) {
     .filter((item) => !parent || item.parentCategory === parent)
     .map((item) => item.category);
   return sortChildCategoryOptions(parent, uniqueValues([...defaults, ...fromItems]));
+}
+
+function getVisibleChildCategoryOptions(parentCategory) {
+  const parent = cleanText(parentCategory);
+  if (!isParentCategoryVisible(parent)) return [];
+  return getChildCategoryOptions(parent).filter((category) => isChildCategoryVisible(parent, category));
+}
+
+function isParentCategoryVisible(parentCategory) {
+  const parent = cleanText(parentCategory);
+  if (!parent) return false;
+  return !(state.categorySettings.hiddenParents || []).includes(parent);
+}
+
+function isChildCategoryVisible(parentCategory, childCategory) {
+  const parent = cleanText(parentCategory);
+  const child = cleanText(childCategory);
+  if (!parent || !child || !isParentCategoryVisible(parent)) return false;
+  return !(state.categorySettings.hiddenChildren?.[parent] || []).includes(child);
 }
 
 function orderedUniqueCategories(groups) {
@@ -1438,7 +1500,7 @@ function getFilterSnapshot() {
   const parentCategories = getParentCategoryOptions();
   const childCategories = state.filters.parentCategory === "all"
     ? getAllChildCategoryOptions()
-    : getChildCategoryOptions(state.filters.parentCategory);
+    : getVisibleChildCategoryOptions(state.filters.parentCategory);
 
   return window.closetFilterUtils.getFilterSnapshot({
     filters: state.filters,
@@ -1486,7 +1548,7 @@ function setFilters(nextPartialFilters = {}) {
   const nextFilters = window.closetFilterUtils.applyFilterPatch(state.filters, nextPartialFilters, {
     cleanText,
     normalizeColor,
-    getChildCategoryOptions
+    getChildCategoryOptions: getVisibleChildCategoryOptions
   });
   if (sameFilterState(state.filters, nextFilters)) return;
   state.filters = nextFilters;

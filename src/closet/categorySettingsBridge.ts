@@ -1,36 +1,45 @@
 import { useEffect, useState } from "react"
 
-export type CategoryDisplayPresetId = "all" | "core" | "men" | "women" | "custom"
+export type CategoryTreeChild = {
+  name: string
+  visible: boolean
+  count: number
+}
 
-export type CategoryDisplayPreset = {
-  id: Exclude<CategoryDisplayPresetId, "custom">
-  label: string
-  description: string
-  parentCategories: string[]
+export type CategoryTreeParent = {
+  name: string
+  visible: boolean
+  count: number
+  children: CategoryTreeChild[]
 }
 
 export type CategorySettingsSnapshot = {
-  selectedPreset: CategoryDisplayPresetId
-  presets: CategoryDisplayPreset[]
   allParents: string[]
   visibleParents: string[]
   hiddenParents: string[]
+  hiddenChildren: Record<string, string[]>
   parentCounts: Record<string, number>
+  tree: CategoryTreeParent[]
+  totalChildCount: number
+  visibleChildCount: number
 }
 
 const EMPTY_CATEGORY_SETTINGS_SNAPSHOT: CategorySettingsSnapshot = {
-  selectedPreset: "all",
-  presets: [],
   allParents: [],
   visibleParents: [],
   hiddenParents: [],
+  hiddenChildren: {},
   parentCounts: {},
+  tree: [],
+  totalChildCount: 0,
+  visibleChildCount: 0,
 }
 
 type CategorySettingsBridgeWindow = Window & {
   closetBridge?: {
     getCategorySettingsSnapshot?: () => CategorySettingsSnapshot
-    setCategoryDisplayPreset?: (presetId: CategoryDisplayPresetId) => CategorySettingsSnapshot
+    resetCategoryVisibility?: () => CategorySettingsSnapshot
+    setCategoryChildVisible?: (parentCategory: string, childCategory: string, visible: boolean) => CategorySettingsSnapshot
     setCategoryParentVisible?: (parentCategory: string, visible: boolean) => CategorySettingsSnapshot
     subscribeCategorySettings?: (listener: (snapshot: CategorySettingsSnapshot) => void) => () => void
   }
@@ -80,10 +89,14 @@ export function useCategorySettingsSnapshot() {
   return snapshot
 }
 
-export function setCategoryDisplayPreset(presetId: CategoryDisplayPresetId) {
-  getCategorySettingsBridge()?.setCategoryDisplayPreset?.(presetId)
+export function resetCategoryVisibility() {
+  getCategorySettingsBridge()?.resetCategoryVisibility?.()
 }
 
 export function setCategoryParentVisible(parentCategory: string, visible: boolean) {
   getCategorySettingsBridge()?.setCategoryParentVisible?.(parentCategory, visible)
+}
+
+export function setCategoryChildVisible(parentCategory: string, childCategory: string, visible: boolean) {
+  getCategorySettingsBridge()?.setCategoryChildVisible?.(parentCategory, childCategory, visible)
 }

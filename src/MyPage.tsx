@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button"
 import { BRAND_CONFIG } from "./brand/brandConfig"
 import { type AppPage } from "./appRoutes"
 import { useAuthSnapshot, type AuthSnapshot } from "./closet/authBridge"
-import { setCategoryDisplayPreset, setCategoryParentVisible, useCategorySettingsSnapshot } from "./closet/categorySettingsBridge"
+import { resetCategoryVisibility, setCategoryChildVisible, setCategoryParentVisible, useCategorySettingsSnapshot } from "./closet/categorySettingsBridge"
 import { ThemeToggle } from "./theme/ThemeToggle"
 
 type MyPageNavigationTarget = Extract<AppPage, "closet" | "about" | "terms" | "privacy">
@@ -92,57 +92,56 @@ function formatLastSyncedAt(value: string) {
 
 function CategoryDisplaySettings() {
   const snapshot = useCategorySettingsSnapshot()
-  const visibleParents = new Set(snapshot.visibleParents)
-  const visibleCount = snapshot.visibleParents.length
-  const totalCount = snapshot.allParents.length
-  const activePreset = snapshot.presets.find((preset) => preset.id === snapshot.selectedPreset)
+  const visibleParentCount = snapshot.visibleParents.length
+  const totalParentCount = snapshot.allParents.length
 
   return (
-    <div className="my-section my-category-section">
-      <div className="my-section-heading">
-        <Settings2 className="size-4" />
-        <h3>카테고리 표시</h3>
+    <section className="my-section my-category-section" aria-label="카테고리 표시 설정">
+      <div className="my-category-section-header">
+        <div className="my-section-heading">
+          <Settings2 className="size-4" />
+          <h3>카테고리 표시</h3>
+        </div>
+        <button className="my-category-reset-button" type="button" onClick={resetCategoryVisibility}>
+          모두 표시
+        </button>
       </div>
       <div className="my-category-summary">
-        <span>{totalCount ? `${visibleCount}/${totalCount}개 표시` : "카테고리 불러오는 중"}</span>
-        <p>MEN/WOMEN은 표시 템플릿일 뿐 제품이나 사용자를 제한하지 않습니다.</p>
+        <span>{totalParentCount ? `상위 ${visibleParentCount}/${totalParentCount}개 · 하위 ${snapshot.visibleChildCount}/${snapshot.totalChildCount}개 표시` : "카테고리 불러오는 중"}</span>
+        <p>전체 카테고리 트리에서 옷장 화면에 보여줄 항목만 체크합니다.</p>
       </div>
-      {snapshot.presets.length ? (
-        <>
-          <div className="my-category-preset-list" aria-label="카테고리 표시 템플릿">
-            {snapshot.presets.map((preset) => (
-              <button
-                key={preset.id}
-                className={snapshot.selectedPreset === preset.id ? "active" : ""}
-                type="button"
-                onClick={() => setCategoryDisplayPreset(preset.id)}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <p className="my-category-preset-description">{activePreset?.description || "직접 선택한 카테고리만 표시합니다."}</p>
-        </>
-      ) : null}
-      <div className="my-category-parent-list" aria-label="상위 카테고리 표시 설정">
-        {snapshot.allParents.map((parent) => {
-          const visible = visibleParents.has(parent)
-          const count = snapshot.parentCounts[parent] || 0
+      <div className="my-category-tree">
+        {snapshot.tree.map((parent) => {
           return (
-            <button
-              key={parent}
-              aria-pressed={visible}
-              className={visible ? "my-category-chip active" : "my-category-chip"}
-              type="button"
-              onClick={() => setCategoryParentVisible(parent, !visible)}
-            >
-              <span>{parent}</span>
-              <small>{count ? `${count.toLocaleString("ko-KR")}개` : "추가 가능"}</small>
-            </button>
+            <div key={parent.name} className={parent.visible ? "my-category-tree-group active" : "my-category-tree-group"}>
+              <label className="my-category-parent-toggle">
+                <input
+                  type="checkbox"
+                  checked={parent.visible}
+                  onChange={(event) => setCategoryParentVisible(parent.name, event.target.checked)}
+                />
+                <span>{parent.name}</span>
+                <small>{parent.count ? `${parent.count.toLocaleString("ko-KR")}개` : "추가 가능"}</small>
+              </label>
+              <div className="my-category-child-list">
+                {parent.children.map((child) => (
+                  <label key={child.name} className={child.visible && parent.visible ? "my-category-child-toggle active" : "my-category-child-toggle"}>
+                    <input
+                      type="checkbox"
+                      checked={child.visible && parent.visible}
+                      disabled={!parent.visible}
+                      onChange={(event) => setCategoryChildVisible(parent.name, child.name, event.target.checked)}
+                    />
+                    <span>{child.name}</span>
+                    <small>{child.count ? `${child.count.toLocaleString("ko-KR")}개` : "추가 가능"}</small>
+                  </label>
+                ))}
+              </div>
+            </div>
           )
         })}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -252,6 +251,8 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
         </div>
       </section>
 
+      <CategoryDisplaySettings />
+
       <section className="my-grid" aria-label="마이페이지 정보">
         <div className="my-section">
           <div className="my-section-heading">
@@ -301,8 +302,6 @@ export function MyPage({ onGoCloset, onNavigate }: MyPageProps) {
             <ThemeToggle className="my-theme-toggle" />
           </div>
         </div>
-
-        <CategoryDisplaySettings />
 
         <div className="my-section">
           <div className="my-section-heading">
