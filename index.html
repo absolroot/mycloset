@@ -14,11 +14,7 @@
       (() => {
         try {
           const storedTheme = localStorage.getItem("jaaang-theme");
-          const theme = storedTheme === "dark" || storedTheme === "light"
-            ? storedTheme
-            : matchMedia("(prefers-color-scheme: dark)").matches
-              ? "dark"
-              : "light";
+          const theme = storedTheme === "dark" || storedTheme === "light" ? storedTheme : "light";
           const root = document.documentElement;
           root.dataset.theme = theme;
           root.classList.toggle("dark", theme === "dark");

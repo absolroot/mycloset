@@ -29,7 +29,7 @@ export function getStoredTheme(): ThemeMode | null {
 }
 
 export function getInitialTheme(): ThemeMode {
-  return getStoredTheme() ?? getSystemTheme()
+  return getStoredTheme() ?? "light"
 }
 
 export function applyTheme(theme: ThemeMode) {

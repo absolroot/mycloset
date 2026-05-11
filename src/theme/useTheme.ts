@@ -5,8 +5,6 @@ import {
   announceThemeChange,
   applyTheme,
   getInitialTheme,
-  getStoredTheme,
-  getSystemTheme,
   isThemeMode,
   persistTheme,
   type ThemeMode,
@@ -27,27 +25,17 @@ export function useTheme() {
 
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== THEME_STORAGE_KEY) return
-      const nextTheme = isThemeMode(event.newValue) ? event.newValue : getSystemTheme()
-      applyTheme(nextTheme)
-      setThemeState(nextTheme)
-    }
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-    const handleSystemChange = () => {
-      if (getStoredTheme()) return
-      const nextTheme = getSystemTheme()
+      const nextTheme = isThemeMode(event.newValue) ? event.newValue : "light"
       applyTheme(nextTheme)
       setThemeState(nextTheme)
     }
 
     window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange)
     window.addEventListener("storage", handleStorage)
-    mediaQuery.addEventListener("change", handleSystemChange)
 
     return () => {
       window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange)
       window.removeEventListener("storage", handleStorage)
-      mediaQuery.removeEventListener("change", handleSystemChange)
     }
   }, [theme])
 
