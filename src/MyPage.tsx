@@ -218,80 +218,6 @@ export function MyPage({ onNavigate }: MyPageProps) {
         </div>
       </section>
 
-      <section className="my-action-panel" aria-label="계정 작업">
-        {isSignedIn ? (
-          <Button className="button danger my-primary-action" data-action="logout" type="button" variant="destructive" disabled={auth.syncing}>
-            <LogOut className="size-4" />
-            로그아웃
-          </Button>
-        ) : (
-          <Button className="google-login-button my-secondary-action" data-action="login" type="button" variant="outline">
-            <GoogleLogo />
-            Google로 동기화하기
-          </Button>
-        )}
-        {isGuest ? (
-          <Button className="button secondary my-secondary-action" data-action="exit-temporary" type="button" variant="outline">
-            <LogIn className="size-4" />
-            로그인 화면으로 돌아가기
-          </Button>
-        ) : null}
-        {isSignedIn ? (
-          <Button className="button secondary my-secondary-action" data-action="merge-temporary" type="button" variant="outline" disabled={auth.syncing}>
-            <Upload className="size-4" />
-            게스트 옷장 가져오기
-          </Button>
-        ) : null}
-      </section>
-
-      <section className="my-trust-panel" aria-label="저장과 백업 안내">
-        <div className="my-trust-copy">
-          <ShieldCheck className="size-5" />
-          <div>
-            <h3>{isGuest ? "브라우저에 저장 중입니다" : isSignedIn ? "Google 계정 동기화 상태" : "저장 방식을 선택하세요"}</h3>
-            <p>
-              {isGuest
-                ? `내 제품 ${ownItemCount.toLocaleString("ko-KR")}개와 예시 ${sampleItemCount.toLocaleString("ko-KR")}개가 이 기기에 있습니다. 다른 기기에서도 쓰려면 ZIP 백업이나 Google 동기화를 남기세요.`
-                : isSignedIn
-                  ? auth.hasPendingSync
-                    ? "아직 동기화 대기 중인 변경이 있습니다. 지금 동기화를 실행하면 계정 옷장에 반영됩니다."
-                    : "계정 옷장으로 저장됩니다. 로컬 백업을 함께 남기면 이미지까지 따로 보관할 수 있습니다."
-                  : "로그인 전에는 게스트 모드로 먼저 써보고, 필요한 시점에 Google 동기화로 전환할 수 있습니다."}
-            </p>
-          </div>
-        </div>
-        <div className="my-trust-actions">
-          {isGuest ? (
-            <>
-              <Button className="button secondary" data-action="export-zip" type="button" variant="outline">
-                <Archive className="size-4" />
-                ZIP 백업
-              </Button>
-              <Button className="google-login-button" data-action="login" type="button" variant="outline">
-                <GoogleLogo />
-                Google 동기화
-              </Button>
-            </>
-          ) : isSignedIn ? (
-            <>
-              <Button className="button secondary" data-action="sync-now" type="button" variant="outline" disabled={auth.syncing}>
-                <RefreshCw className="size-4" />
-                지금 동기화
-              </Button>
-              <Button className="button secondary" data-action="export-zip" type="button" variant="outline">
-                <Archive className="size-4" />
-                ZIP 백업
-              </Button>
-            </>
-          ) : (
-            <Button className="google-login-button" data-action="login" type="button" variant="outline">
-              <GoogleLogo />
-              Google로 시작
-            </Button>
-          )}
-        </div>
-      </section>
-
       <Tabs defaultValue="overview" className="my-tabs">
         <TabsList className="my-tabs-list" aria-label="마이페이지 메뉴">
           <TabsTrigger value="overview" className="my-tab-trigger">
@@ -312,77 +238,146 @@ export function MyPage({ onNavigate }: MyPageProps) {
 
         <TabsContent value="overview" className="my-tab-content">
           <section className="my-grid" aria-label="마이페이지 정보">
-        <div className="my-section">
-          <div className="my-section-heading">
-            <Cloud className="size-4" />
-            <h3>상태</h3>
-          </div>
-          <dl className="my-status-list">
-            <div>
-              <dt>저장 방식</dt>
-              <dd>{isGuest ? "게스트 로컬 저장" : isSignedIn ? "계정 동기화" : "로그인 필요"}</dd>
-            </div>
-            <div>
-              <dt>동기화</dt>
-              <dd>{formatSyncState(auth)}</dd>
-            </div>
-            <div>
-              <dt>대기 작업</dt>
-              <dd>{auth.pendingSyncCount.toLocaleString("ko-KR")}개</dd>
-            </div>
-            <div>
-              <dt>최근 동기화</dt>
-              <dd>{formatLastSyncedAt(auth.lastSyncedAt)}</dd>
-            </div>
-            <div>
-              <dt>제품 수</dt>
-              <dd>{auth.itemCount.toLocaleString("ko-KR")}개</dd>
-            </div>
-          </dl>
-          {isSignedIn ? (
-            <div className="my-sync-actions">
-              <Button className="button secondary" data-action="sync-now" type="button" variant="outline" disabled={auth.syncing}>
-                <RefreshCw className="size-4" />
-                {auth.lastSyncError || auth.hasPendingSync ? "동기화 재시도" : "지금 동기화"}
-              </Button>
-              {auth.lastSyncError ? <p className="my-inline-warning">{auth.lastSyncErrorMessage || "마지막 동기화가 실패했습니다."}</p> : null}
-            </div>
-          ) : null}
-        </div>
+            <section className="my-action-panel" aria-label="계정 작업">
+              {isSignedIn ? (
+                <Button className="button danger my-primary-action" data-action="logout" type="button" variant="destructive" disabled={auth.syncing}>
+                  <LogOut className="size-4" />
+                  로그아웃
+                </Button>
+              ) : isGuest ? null : (
+                <Button className="google-login-button my-secondary-action" data-action="login" type="button" variant="outline">
+                  <GoogleLogo />
+                  Google로 동기화하기
+                </Button>
+              )}
+              {isGuest ? (
+                <Button className="button secondary my-secondary-action" data-action="exit-temporary" type="button" variant="outline">
+                  <LogIn className="size-4" />
+                  로그인 화면으로 돌아가기
+                </Button>
+              ) : null}
+              {isSignedIn ? (
+                <Button className="button secondary my-secondary-action" data-action="merge-temporary" type="button" variant="outline" disabled={auth.syncing}>
+                  <Upload className="size-4" />
+                  게스트 옷장 가져오기
+                </Button>
+              ) : null}
+            </section>
 
-        <div className="my-section my-note-section">
-          <div className="my-section-heading">
-            <ShieldCheck className="size-4" />
-            <h3>안내</h3>
-          </div>
-          <p>
-            게스트 옷장과 로그인 계정 옷장은 분리되어 있습니다. 로그인 후에는 계정 옷장을 먼저 불러오고, 필요할 때 게스트 옷장 가져오기로 직접 추가할 수 있습니다.
-          </p>
-        </div>
+            <section className="my-trust-panel" aria-label="저장과 백업 안내">
+              <div className="my-trust-copy">
+                <ShieldCheck className="size-5" />
+                <div>
+                  <h3>{isGuest ? "브라우저에 저장 중입니다" : isSignedIn ? "Google 계정 동기화 상태" : "저장 방식을 선택하세요"}</h3>
+                  <p>
+                    {isGuest
+                      ? `내 제품 ${ownItemCount.toLocaleString("ko-KR")}개와 예시 ${sampleItemCount.toLocaleString("ko-KR")}개가 이 기기에 있습니다. 다른 기기에서도 쓰려면 ZIP 백업이나 Google 동기화를 남기세요.`
+                      : isSignedIn
+                        ? auth.hasPendingSync
+                          ? "아직 동기화 대기 중인 변경이 있습니다. 지금 동기화를 실행하면 계정 옷장에 반영됩니다."
+                          : "계정 옷장으로 저장됩니다. 로컬 백업을 함께 남기면 이미지까지 따로 보관할 수 있습니다."
+                        : "로그인 전에는 게스트 모드로 먼저 써보고, 필요한 시점에 Google 동기화로 전환할 수 있습니다."}
+                  </p>
+                </div>
+              </div>
+              <div className="my-trust-actions">
+                {isGuest ? (
+                  <>
+                    <Button className="button secondary" data-action="export-zip" type="button" variant="outline">
+                      <Archive className="size-4" />
+                      ZIP 백업
+                    </Button>
+                    <Button className="google-login-button" data-action="login" type="button" variant="outline">
+                      <GoogleLogo />
+                      Google 동기화
+                    </Button>
+                  </>
+                ) : isSignedIn ? (
+                  <>
+                    <Button className="button secondary" data-action="sync-now" type="button" variant="outline" disabled={auth.syncing}>
+                      <RefreshCw className="size-4" />
+                      지금 동기화
+                    </Button>
+                    <Button className="button secondary" data-action="export-zip" type="button" variant="outline">
+                      <Archive className="size-4" />
+                      ZIP 백업
+                    </Button>
+                  </>
+                ) : (
+                  <Button className="google-login-button" data-action="login" type="button" variant="outline">
+                    <GoogleLogo />
+                    Google로 시작
+                  </Button>
+                )}
+              </div>
+            </section>
 
-        <div className="my-section my-legal-section">
-          <div className="my-section-heading">
-            <FileText className="size-4" />
-            <h3>서비스 이용정보</h3>
-          </div>
-          <div className="my-menu-list my-legal-list">
-            <a href="/about" onClick={(event) => navigateInApp(event, "about")}>
-              <Info className="size-4" />
-              <span>서비스 소개</span>
-              <ChevronRight className="size-4 my-menu-chevron" />
-            </a>
-            <a href="/terms" onClick={(event) => navigateInApp(event, "terms")}>
-              <FileText className="size-4" />
-              <span>이용약관</span>
-              <ChevronRight className="size-4 my-menu-chevron" />
-            </a>
-            <a href="/privacy" onClick={(event) => navigateInApp(event, "privacy")}>
-              <ShieldCheck className="size-4" />
-              <span>개인정보처리방침</span>
-              <ChevronRight className="size-4 my-menu-chevron" />
-            </a>
-          </div>
-        </div>
+            <div className="my-section my-status-section">
+              <div className="my-section-heading">
+                <Cloud className="size-4" />
+                <h3>상태</h3>
+              </div>
+              <dl className="my-status-list">
+                <div>
+                  <dt>저장 방식</dt>
+                  <dd>{isGuest ? "게스트 로컬 저장" : isSignedIn ? "계정 동기화" : "로그인 필요"}</dd>
+                </div>
+                <div>
+                  <dt>Google 계정</dt>
+                  <dd>{isSignedIn ? auth.email || auth.displayName || "연결됨" : "연결 안 됨"}</dd>
+                </div>
+                <div>
+                  <dt>계정 동기화</dt>
+                  <dd>{formatSyncState(auth)}</dd>
+                </div>
+                <div>
+                  <dt>대기 작업</dt>
+                  <dd>{auth.pendingSyncCount.toLocaleString("ko-KR")}개</dd>
+                </div>
+                <div>
+                  <dt>최근 동기화</dt>
+                  <dd>{formatLastSyncedAt(auth.lastSyncedAt)}</dd>
+                </div>
+                <div>
+                  <dt>제품 수</dt>
+                  <dd>{auth.itemCount.toLocaleString("ko-KR")}개</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="my-section my-note-section">
+              <div className="my-section-heading">
+                <ShieldCheck className="size-4" />
+                <h3>안내</h3>
+              </div>
+              <p>
+                게스트 옷장과 로그인 계정 옷장은 분리되어 있습니다. 로그인 후에는 계정 옷장을 먼저 불러오고, 필요할 때 게스트 옷장 가져오기로 직접 추가할 수 있습니다.
+              </p>
+            </div>
+
+            <div className="my-section my-legal-section">
+              <div className="my-section-heading">
+                <FileText className="size-4" />
+                <h3>서비스 이용정보</h3>
+              </div>
+              <div className="my-menu-list my-legal-list">
+                <a href="/about" onClick={(event) => navigateInApp(event, "about")}>
+                  <Info className="size-4" />
+                  <span>서비스 소개</span>
+                  <ChevronRight className="size-4 my-menu-chevron" />
+                </a>
+                <a href="/terms" onClick={(event) => navigateInApp(event, "terms")}>
+                  <FileText className="size-4" />
+                  <span>이용약관</span>
+                  <ChevronRight className="size-4 my-menu-chevron" />
+                </a>
+                <a href="/privacy" onClick={(event) => navigateInApp(event, "privacy")}>
+                  <ShieldCheck className="size-4" />
+                  <span>개인정보처리방침</span>
+                  <ChevronRight className="size-4 my-menu-chevron" />
+                </a>
+              </div>
+            </div>
           </section>
         </TabsContent>
 

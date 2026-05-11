@@ -82,6 +82,8 @@
 
 .my-action-panel {
   display: flex;
+  grid-column: 1 / -1;
+  order: 3;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
@@ -96,6 +98,8 @@
 
 .my-trust-panel {
   display: flex;
+  grid-column: 1 / -1;
+  order: 2;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
@@ -285,12 +289,24 @@
   display: none;
 }
 
+.my-status-section {
+  grid-column: 1 / -1;
+  order: 1;
+}
+
+.my-status-section .my-status-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+}
+
 .my-note-section {
   grid-column: 1 / -1;
+  order: 4;
 }
 
 .my-legal-section {
   grid-column: 1 / -1;
+  order: 5;
 }
 
 .my-section-heading {
@@ -729,6 +745,10 @@
 
   .my-tab-content {
     grid-area: content;
+  }
+
+  .my-status-section .my-status-list {
+    grid-template-columns: 1fr;
   }
 
   .my-account-exit-link {
