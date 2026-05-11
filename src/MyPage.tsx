@@ -402,14 +402,14 @@ export function MyPage({ onNavigate }: MyPageProps) {
             <DataPortabilitySettings />
           </div>
         </TabsContent>
+        {isSignedIn ? (
+          <p className="my-account-exit-link">
+            <a href="/account-deletion" onClick={(event) => navigateInApp(event, "accountDeletion")}>
+              회원 탈퇴
+            </a>
+          </p>
+        ) : null}
       </Tabs>
-      {isSignedIn ? (
-        <p className="my-account-exit-link">
-          <a href="/account-deletion" onClick={(event) => navigateInApp(event, "accountDeletion")}>
-            회원 탈퇴
-          </a>
-        </p>
-      ) : null}
     </main>
   )
 }

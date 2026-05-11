@@ -152,12 +152,18 @@
 .my-tabs {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-areas:
+    "menu content"
+    "exit content";
+  grid-template-rows: auto 1fr;
   min-width: 0;
   align-items: start;
-  gap: 18px;
+  column-gap: 18px;
+  row-gap: 8px;
 }
 
 .my-tabs-list {
+  grid-area: menu;
   display: grid;
   width: 100%;
   height: auto;
@@ -218,7 +224,7 @@
 }
 
 .my-tab-content {
-  grid-column: 2;
+  grid-area: content;
   min-width: 0;
 }
 
@@ -237,11 +243,16 @@
 }
 
 .my-account-exit-link {
-  margin: 2px 0 0;
-  text-align: center;
+  grid-area: exit;
+  margin: 0;
+  padding: 0 8px;
+  text-align: left;
 }
 
 .my-account-exit-link a {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
   color: var(--muted-foreground);
   font-size: 12px;
   font-weight: 600;
@@ -682,6 +693,11 @@
 @media (max-width: 760px) {
   .my-tabs {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "menu"
+      "content"
+      "exit";
+    grid-template-rows: auto;
     gap: 12px;
   }
 
@@ -712,7 +728,12 @@
   }
 
   .my-tab-content {
-    grid-column: auto;
+    grid-area: content;
+  }
+
+  .my-account-exit-link {
+    padding: 0;
+    text-align: center;
   }
 
   .my-category-tree {
